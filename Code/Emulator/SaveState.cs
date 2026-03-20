@@ -61,6 +61,21 @@ public static class SaveState
 
 		gba.Cpu.DeserializePipeline( r );
 		gba.Bus.InstallHleBios();
+
+		gba.Apu.SamplesWritten = 0;
+
+		gba.Ppu._firstAffine = -1;
+		gba.Ppu._lastDrawnY = -1;
+		for ( int i = 0; i < 4; i++ )
+		{
+			bool enabled = (gba.Ppu.DispCnt & (0x100 << i)) != 0;
+			gba.Ppu._enabledAtY[i] = enabled ? 0 : int.MaxValue;
+			gba.Ppu._wasFullyEnabled[i] = enabled;
+		}
+		gba.Ppu._oldCharBase[0] = (uint)((gba.Ppu.BgCnt[2] >> 2) & 3) * 0x4000u;
+		gba.Ppu._oldCharBase[1] = (uint)((gba.Ppu.BgCnt[3] >> 2) & 3) * 0x4000u;
+		gba.Ppu._oldCharBaseFirstY[0] = 0;
+		gba.Ppu._oldCharBaseFirstY[1] = 0;
 	}
 
 	public static byte[] ReadScreenshot( byte[] data )
