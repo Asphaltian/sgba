@@ -162,9 +162,9 @@ public partial class GbaVideo
 		var scanlines = _scanlineFrames[_writeSlot];
 		ref var s = ref scanlines[y];
 
-		s.DispCntMosaic = (uint)DispCnt | ((uint)Mosaic << 16);
-		s.BgCnt01 = (uint)BgCnt[0] | ((uint)BgCnt[1] << 16);
-		s.BgCnt23 = (uint)BgCnt[2] | ((uint)BgCnt[3] << 16);
+		s.DispCntMosaic = DispCnt | ((uint)Mosaic << 16);
+		s.BgCnt01 = BgCnt[0] | ((uint)BgCnt[1] << 16);
+		s.BgCnt23 = BgCnt[2] | ((uint)BgCnt[3] << 16);
 
 		s.BgOffset0 = PackOffset( BgHOfs[0], BgVOfs[0] );
 		s.BgOffset1 = PackOffset( BgHOfs[1], BgVOfs[1] );
@@ -180,11 +180,11 @@ public partial class GbaVideo
 		s.Bg3X = BgX[1];
 		s.Bg3Y = BgY[1];
 
-		s.BldCntAlpha = (uint)BldCnt | ((uint)BldAlpha << 16);
-		s.BldYWin0H = (uint)BldY | ((uint)Win0H << 16);
-		s.Win0VWin1H = (uint)Win0V | ((uint)Win1H << 16);
-		s.Win1VWinIn = (uint)Win1V | ((uint)WinIn << 16);
-		s.WinOutPad = (uint)WinOut;
+		s.BldCntAlpha = BldCnt | ((uint)BldAlpha << 16);
+		s.BldYWin0H = BldY | ((uint)Win0H << 16);
+		s.Win0VWin1H = Win0V | ((uint)Win1H << 16);
+		s.Win1VWinIn = Win1V | ((uint)WinIn << 16);
+		s.WinOutPad = WinOut;
 
 		s.FirstAffine = _firstAffine;
 
@@ -625,7 +625,7 @@ public partial class GbaVideo
 
 	private static uint PackS16( short a, short b )
 	{
-		return (uint)(ushort)a | ((uint)(ushort)b << 16);
+		return (ushort)a | ((uint)(ushort)b << 16);
 	}
 
 	private static void GetSpriteSize( int shape, int size, out int w, out int h )

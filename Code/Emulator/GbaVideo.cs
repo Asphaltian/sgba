@@ -143,14 +143,14 @@ public partial class GbaVideo
 
 		DispStat |= 0x0002;
 
-		if ( (DispStat & 0x0010) != 0 )
-			Gba.Io.RaiseIrq( GbaIrq.HBlank );
-
 		if ( VCount < GbaConstants.VisibleLines )
 			Gba.Dma.OnHBlank();
 
 		if ( VCount >= 2 && VCount < GbaConstants.VisibleLines + 2 )
 			Gba.Dma.OnDisplayStart();
+
+		if ( (DispStat & 0x0010) != 0 )
+			Gba.Io.RaiseIrq( GbaIrq.HBlank, -6 );
 
 		if ( VCount < GbaConstants.VisibleLines )
 		{

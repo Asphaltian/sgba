@@ -35,10 +35,8 @@ public enum LogCategory
 
 public static class GbaLog
 {
-	private const int MaxLogBuf = 1024;
-
-	private static readonly string[] CategoryNames = new string[(int)LogCategory.Max]
-	{
+	private static readonly string[] CategoryNames =
+	[
 		"GBA",
 		"GBA Debug",
 		"GBA DMA",
@@ -52,10 +50,10 @@ public static class GbaLog
 		"GBA State",
 		"GBA Hardware",
 		"Status"
-	};
+	];
 
-	private static readonly string[] CategoryIds = new string[(int)LogCategory.Max]
-	{
+	private static readonly string[] CategoryIds =
+	[
 		"gba",
 		"gba.debug",
 		"gba.dma",
@@ -69,16 +67,27 @@ public static class GbaLog
 		"gba.serialize",
 		"gba.hardware",
 		"status"
-	};
+	];
 
-	private static LogLevel _defaultLevels = LogLevel.All;
-	private static readonly Dictionary<LogCategory, LogLevel> _categoryLevels = new();
+	private static LogLevel _defaultLevels = LogLevel.Fatal | LogLevel.Error | LogLevel.Warn | LogLevel.Debug;
+	private static readonly LogLevel[] _levels = new LogLevel[(int)LogCategory.Max];
 	private static Action<LogCategory, LogLevel, string> _backend;
+
+	static GbaLog()
+	{
+		for ( int i = 0; i < _levels.Length; i++ )
+			_levels[i] = _defaultLevels;
+	}
 
 	public static LogLevel DefaultLevels
 	{
 		get => _defaultLevels;
-		set => _defaultLevels = value;
+		set
+		{
+			_defaultLevels = value;
+			for ( int i = 0; i < _levels.Length; i++ )
+				_levels[i] = value;
+		}
 	}
 
 	public static void SetBackend( Action<LogCategory, LogLevel, string> backend )
@@ -88,26 +97,22 @@ public static class GbaLog
 
 	public static void SetCategoryLevels( LogCategory category, LogLevel levels )
 	{
-		_categoryLevels[category] = levels;
+		_levels[(int)category] = levels;
 	}
 
 	public static void ResetCategoryLevels( LogCategory category )
 	{
-		_categoryLevels.Remove( category );
+		_levels[(int)category] = _defaultLevels;
 	}
 
 	public static LogLevel GetCategoryLevels( LogCategory category )
 	{
-		if ( _categoryLevels.TryGetValue( category, out var levels ) )
-			return levels;
-		return _defaultLevels;
+		return _levels[(int)category];
 	}
 
 	public static bool FilterTest( LogCategory category, LogLevel level )
 	{
-		if ( _categoryLevels.TryGetValue( category, out var catLevels ) )
-			return (catLevels & level) != 0;
-		return (_defaultLevels & level) != 0;
+		return (_levels[(int)category] & level) != 0;
 	}
 
 	public static string GetCategoryName( LogCategory category )

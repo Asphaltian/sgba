@@ -106,7 +106,7 @@ public class GbaTimerController
 
 		if ( ticks <= 0 ) return;
 
-		long total = (long)c.Counter + ticks;
+		long total = c.Counter + ticks;
 		int reload = c.Reload;
 		int range = 0x10000 - reload;
 
@@ -129,7 +129,7 @@ public class GbaTimerController
 		long adjustedCycle = (Gba.Cpu.Cycles - 2) & ~tickMask;
 		long ticks = (adjustedCycle - c.LastEvent) >> bits;
 
-		int result = (int)c.Counter + (int)ticks;
+		int result = c.Counter + (int)ticks;
 
 		int reload = c.Reload;
 		int range = 0x10000 - reload;

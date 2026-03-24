@@ -50,13 +50,14 @@ public class GbaDmaController
 		c.NextDest = c.Dest & DstMask[ch] & ~(width - 1);
 		c.DestInvalid = ch < 3 && c.Dest >= 0x08000000;
 
-		if ( (c.NextSource & (width - 1)) != 0 )
+		if ( (c.NextSource & (width - 1)) != 0 && GbaLog.FilterTest( LogCategory.GBADMA, LogLevel.GameError ) )
 			GbaLog.Write( LogCategory.GBADMA, LogLevel.GameError, $"Misaligned DMA source address: 0x{c.NextSource:X8}" );
-		if ( (c.NextDest & (width - 1)) != 0 )
+		if ( (c.NextDest & (width - 1)) != 0 && GbaLog.FilterTest( LogCategory.GBADMA, LogLevel.GameError ) )
 			GbaLog.Write( LogCategory.GBADMA, LogLevel.GameError, $"Misaligned DMA destination address: 0x{c.NextDest:X8}" );
 
-		GbaLog.Write( LogCategory.GBADMA, LogLevel.Info,
-			$"Starting DMA {ch} 0x{c.NextSource:X8} -> 0x{c.NextDest:X8} ({c.Reg:X4}:{c.Count:X4})" );
+		if ( GbaLog.FilterTest( LogCategory.GBADMA, LogLevel.Info ) )
+			GbaLog.Write( LogCategory.GBADMA, LogLevel.Info,
+				$"Starting DMA {ch} 0x{c.NextSource:X8} -> 0x{c.NextDest:X8} ({c.Reg:X4}:{c.Count:X4})" );
 
 		int timing = (value >> 12) & 3;
 		if ( timing == 0 )

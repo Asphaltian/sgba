@@ -203,7 +203,8 @@ public class GbaMemory
 						BiosPrefetch = ReadWordFromArray( Bios, addr & ~3u );
 						return Bios[addr];
 					}
-					GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, $"Bad BIOS Load8: 0x{address:X8}" );
+					if ( GbaLog.FilterTest( LogCategory.GBAMem, LogLevel.GameError ) )
+						GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, $"Bad BIOS Load8: 0x{address:X8}" );
 					return (byte)(BiosPrefetch >> (int)((address & 3) * 8));
 				}
 				return Gba.Bios.HleActive
@@ -239,7 +240,8 @@ public class GbaMemory
 				return Gba.Savedata.Read8( address );
 
 			default:
-				GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, $"Bad memory Load8: 0x{address:X8}" );
+				if ( GbaLog.FilterTest( LogCategory.GBAMem, LogLevel.GameError ) )
+					GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, $"Bad memory Load8: 0x{address:X8}" );
 				return (byte)(Gba.Cpu.OpenBusPrefetch >> (int)((address & 3) * 8));
 		}
 	}
@@ -266,7 +268,8 @@ public class GbaMemory
 						BiosPrefetch = ReadWordFromArray( Bios, addr & ~3u );
 						return ReadHalfFromArray( Bios, addr );
 					}
-					GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, $"Bad BIOS Load16: 0x{address:X8}" );
+					if ( GbaLog.FilterTest( LogCategory.GBAMem, LogLevel.GameError ) )
+						GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, $"Bad BIOS Load16: 0x{address:X8}" );
 					return (ushort)(BiosPrefetch >> (int)((address & 2) * 8));
 				}
 				return Gba.Bios.HleActive
@@ -306,12 +309,14 @@ public class GbaMemory
 					uint romAddr = address & 0x1FFFFFF;
 					if ( romAddr < (uint)Rom.Length - 1 )
 						return ReadHalfFromArray( Rom, romAddr );
-					GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, $"Out of bounds ROM Load16: 0x{address:X8}" );
+					if ( GbaLog.FilterTest( LogCategory.GBAMem, LogLevel.GameError ) )
+						GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, $"Out of bounds ROM Load16: 0x{address:X8}" );
 					return (ushort)(romAddr >> 1);
 				}
 
 			default:
-				GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, $"Bad memory Load16: 0x{address:X8}" );
+				if ( GbaLog.FilterTest( LogCategory.GBAMem, LogLevel.GameError ) )
+					GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, $"Bad memory Load16: 0x{address:X8}" );
 				return (ushort)(Gba.Cpu.OpenBusPrefetch >> (int)((address & 2) * 8));
 		}
 	}
@@ -338,7 +343,8 @@ public class GbaMemory
 						BiosPrefetch = ReadWordFromArray( Bios, addr );
 						return BiosPrefetch;
 					}
-					GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, $"Bad BIOS Load32: 0x{address:X8}" );
+					if ( GbaLog.FilterTest( LogCategory.GBAMem, LogLevel.GameError ) )
+						GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, $"Bad BIOS Load32: 0x{address:X8}" );
 					return BiosPrefetch;
 				}
 				return Gba.Bios.HleActive ? 0u : Gba.Cpu.OpenBusPrefetch;
@@ -365,11 +371,13 @@ public class GbaMemory
 				uint romAddr = address & 0x1FFFFFF;
 				if ( romAddr < (uint)Rom.Length - 3 )
 					return ReadWordFromArray( Rom, romAddr );
-				GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, $"Out of bounds ROM Load32: 0x{address:X8}" );
+				if ( GbaLog.FilterTest( LogCategory.GBAMem, LogLevel.GameError ) )
+					GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, $"Out of bounds ROM Load32: 0x{address:X8}" );
 				return (romAddr >> 1) & 0xFFFF | ((romAddr >> 1) + 1) << 16;
 
 			default:
-				GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, $"Bad memory Load32: 0x{address:X8}" );
+				if ( GbaLog.FilterTest( LogCategory.GBAMem, LogLevel.GameError ) )
+					GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, $"Bad memory Load32: 0x{address:X8}" );
 				return Gba.Cpu.OpenBusPrefetch;
 		}
 	}

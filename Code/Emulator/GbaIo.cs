@@ -245,7 +245,8 @@ public class GbaIo
 			case 0x302: return 0;
 
 			default:
-				GbaLog.Write( LogCategory.GBAIO, LogLevel.GameError, $"Read from unused I/O register: {offset:X3}" );
+				if ( GbaLog.FilterTest( LogCategory.GBAIO, LogLevel.GameError ) )
+					GbaLog.Write( LogCategory.GBAIO, LogLevel.GameError, $"Read from unused I/O register: {offset:X3}" );
 				return (ushort)Gba.Cpu.OpenBusPrefetch;
 		}
 	}
@@ -510,9 +511,14 @@ public class GbaIo
 				Gba.Memory.AdjustWaitstates( value );
 				break;
 			case 0x208: IME = (ushort)(value & 1); TestIrq( 1 ); break;
+			case 0x20A:
+			case 0x206:
+			case 0x302:
+				break;
 			case 0x300: PostFlg = (byte)value; break;
 			default:
-				GbaLog.Write( LogCategory.GBAIO, LogLevel.GameError, $"Write to unused I/O register: {offset:X3}" );
+				if ( GbaLog.FilterTest( LogCategory.GBAIO, LogLevel.GameError ) )
+					GbaLog.Write( LogCategory.GBAIO, LogLevel.GameError, $"Write to unused I/O register: {offset:X3}" );
 				break;
 		}
 	}

@@ -17,10 +17,7 @@ public partial class ArmCore
 			return;
 		}
 
-		uint decodeBits = ((opcode >> 16) & 0xFF0) | ((opcode >> 4) & 0xF);
-
 		uint group = (opcode >> 25) & 7;
-
 		switch ( group )
 		{
 			case 0:

@@ -106,7 +106,7 @@ public partial class GbaBios
 	{
 		int i = (int)Gba.Cpu.Registers[0];
 		short result = ArcTanCore( i, out int a, out int b, out int cycles );
-		Gba.Cpu.Registers[0] = (uint)(short)result;
+		Gba.Cpu.Registers[0] = (uint)result;
 		Gba.Cpu.Registers[1] = (uint)a;
 		Gba.Cpu.Registers[3] = (uint)b;
 		BiosStall = cycles;
@@ -212,7 +212,7 @@ public partial class GbaBios
 			}
 		}
 
-		Gba.Cpu.Registers[0] = (uint)(ushort)angle;
+		Gba.Cpu.Registers[0] = (ushort)angle;
 		Gba.Cpu.Registers[3] = 0x170;
 	}
 
