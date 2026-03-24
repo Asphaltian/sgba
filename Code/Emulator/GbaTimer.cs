@@ -66,7 +66,7 @@ public class GbaTimerController
 			{
 				int bits = PrescaleBits[c.PrescaleBits];
 				long tickMask = (1L << bits) - 1;
-				c.LastEvent = Gba.Cpu.Cycles & ~tickMask;
+				c.LastEvent = Gba.Cpu.InstructionStartCycles & ~tickMask;
 				ScheduleOverflow( c );
 			}
 			RecalcGlobalEvent();
@@ -100,7 +100,7 @@ public class GbaTimerController
 
 		int bits = PrescaleBits[c.PrescaleBits];
 		long tickMask = (1L << bits) - 1;
-		long currentCycle = Gba.Cpu.Cycles & ~tickMask;
+		long currentCycle = Gba.Cpu.InstructionStartCycles & ~tickMask;
 		long ticks = (currentCycle - c.LastEvent) >> bits;
 		c.LastEvent = currentCycle;
 
@@ -126,7 +126,7 @@ public class GbaTimerController
 
 		int bits = PrescaleBits[c.PrescaleBits];
 		long tickMask = (1L << bits) - 1;
-		long adjustedCycle = (Gba.Cpu.Cycles - 2) & ~tickMask;
+		long adjustedCycle = (Gba.Cpu.InstructionStartCycles - 2) & ~tickMask;
 		long ticks = (adjustedCycle - c.LastEvent) >> bits;
 
 		int result = c.Counter + (int)ticks;

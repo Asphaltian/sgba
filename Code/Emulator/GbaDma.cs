@@ -187,6 +187,7 @@ public class GbaDmaController
 
 		CpuBlocked = true;
 		PerformingDma = 1 | (number << 1);
+		Gba.Cpu.InstructionStartCycles = Gba.Cpu.Cycles;
 
 		int cycles = 2 + CalculateAccessCycles( ch, width, srcRegion, dstRegion, source );
 		ch.When += cycles;
