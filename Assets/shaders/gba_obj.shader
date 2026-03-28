@@ -26,7 +26,6 @@ CS
 	StructuredBuffer<uint> Vram < Attribute( "Vram" ); >;
 	StructuredBuffer<uint> Palette < Attribute( "Palette" ); >;
 	StructuredBuffer<GpuSprite> Sprites < Attribute( "Sprites" ); >;
-	int SpriteCount < Attribute( "SpriteCount" ); >;
 	int Scale < Attribute( "Scale" ); >;
 
 	RWTexture2D<float4> OutputColor < Attribute( "OutputColor" ); >;
@@ -64,6 +63,10 @@ CS
 		if ( ( dispCnt & 0x1000u ) == 0u )
 			return;
 
+		uint oamState = state.OamState;
+		int oamOffset = (int)( oamState & 0xFFFFu );
+		int oamMax = (int)( ( oamState >> 16u ) & 0xFFFFu );
+
 		int screenX = (int)nativeX;
 		int screenY = (int)nativeY;
 		float screenXf = ( (float)id.x + 0.5 ) / (float)Scale;
@@ -81,9 +84,9 @@ CS
 		int objMosH = (int)( ( mosaicReg >> 8u ) & 0xFu ) + 1;
 		int objMosV = (int)( ( mosaicReg >> 12u ) & 0xFu ) + 1;
 
-		for ( int i = 0; i < SpriteCount; i++ )
+		for ( int i = 0; i < oamMax; i++ )
 		{
-			GpuSprite spr = Sprites[i];
+			GpuSprite spr = Sprites[oamOffset + i];
 			uint flags = spr.Flags;
 			int priority = (int)( ( flags >> 10u ) & 3u );
 

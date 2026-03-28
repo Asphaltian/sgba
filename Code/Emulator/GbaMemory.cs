@@ -440,7 +440,7 @@ public class GbaMemory
 					WriteHalfToArray( Vram, MapVramAddress( address ), value );
 				}
 				break;
-			case 0x7: WriteHalfToArray( Oam, address & 0x3FF, value ); break;
+			case 0x7: WriteHalfToArray( Oam, address & 0x3FF, value ); Gba.Video._oamDirty = true; break;
 			case 0x8:
 			case 0x9:
 				{
@@ -480,7 +480,7 @@ public class GbaMemory
 					WriteWordToArray( Vram, MapVramAddress( address ), value );
 				}
 				break;
-			case 0x7: WriteWordToArray( Oam, address & 0x3FF, value ); break;
+			case 0x7: WriteWordToArray( Oam, address & 0x3FF, value ); Gba.Video._oamDirty = true; break;
 		}
 	}
 

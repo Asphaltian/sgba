@@ -24,6 +24,7 @@ public partial class GbaVideo
 		public uint WinOutPad;
 		public int FirstAffine;
 		public uint EnabledAtYMask;
+		public uint OamState;
 	}
 
 	[StructLayout( LayoutKind.Sequential )]
@@ -63,12 +64,14 @@ public partial class GbaVideo
 	private ScanlineState[][] _scanlineFrames;
 	private uint[][] _paletteFrames;
 	private GpuSprite[][] _spriteFrames;
-	private int[] _spriteCountFrames;
+	private int[] _frameOamTotal;
 	private uint[][] _vramFrames;
 
 	private int _writeSlot;
 	private int _readSlot = -1;
-	private int _frameSpriteCount;
+
+	private const int MaxOamBatches = 8;
+	private const int MaxOamEntries = 128 * MaxOamBatches;
 
 	private uint[] _frameOldCharBase = new uint[2];
 	private int[] _frameOldCharBaseFirstY = new int[2];
@@ -82,18 +85,18 @@ public partial class GbaVideo
 		_scanlineFrames = new ScanlineState[2][];
 		_paletteFrames = new uint[2][];
 		_spriteFrames = new GpuSprite[2][];
-		_spriteCountFrames = new int[2];
+		_frameOamTotal = new int[2];
 		_vramFrames = new uint[2][];
 		for ( int i = 0; i < 2; i++ )
 		{
 			_scanlineFrames[i] = new ScanlineState[GbaConstants.VisibleLines];
 			_paletteFrames[i] = new uint[256 * GbaConstants.VisibleLines];
-			_spriteFrames[i] = new GpuSprite[128];
+			_spriteFrames[i] = new GpuSprite[MaxOamEntries];
 			_vramFrames[i] = new uint[96 * 1024 / 4];
 		}
 
 		_gpuScanlines = new GpuBuffer<ScanlineState>( GbaConstants.VisibleLines );
-		_gpuSprites = new GpuBuffer<GpuSprite>( 128 );
+		_gpuSprites = new GpuBuffer<GpuSprite>( MaxOamEntries );
 		_gpuVram = new GpuBuffer<uint>( 96 * 1024 / 4 );
 		_gpuPalette = new GpuBuffer<uint>( 256 * GbaConstants.VisibleLines );
 
@@ -200,11 +203,23 @@ public partial class GbaVideo
 		var palDst = _paletteFrames[_writeSlot];
 		int baseIdx = y * 256;
 		Buffer.BlockCopy( ram, 0, palDst, baseIdx * 4, 1024 );
+
+		if ( _oamDirty )
+		{
+			int newOffset = _oamBatchOffset + _oamMax;
+			if ( newOffset + 128 <= MaxOamEntries )
+			{
+				_oamBatchOffset = newOffset;
+				_oamMax = CleanOam( newOffset );
+			}
+			_oamDirty = false;
+		}
+		s.OamState = (uint)_oamBatchOffset | ((uint)_oamMax << 16);
 	}
 
-	private void PrepareSprites()
+	private int CleanOam( int offset )
 	{
-		if ( !GpuReady ) return;
+		if ( !GpuReady ) return 0;
 
 		var sprites = _spriteFrames[_writeSlot];
 		byte[] oam = Gba.Memory.Oam;
@@ -253,7 +268,7 @@ public partial class GbaVideo
 			}
 			uint stride = mapping1D ? (uint)(w >> 3) : (uint)(0x20 >> (is8bpp ? 1 : 0));
 
-			ref var spr = ref sprites[count];
+			ref var spr = ref sprites[offset + count];
 			spr.X = sprX;
 			spr.Y = sprY;
 			spr.Width = w;
@@ -323,7 +338,7 @@ public partial class GbaVideo
 			count++;
 		}
 
-		_spriteCountFrames[_writeSlot] = count;
+		return count;
 	}
 
 	private void SnapshotVram()
@@ -337,6 +352,7 @@ public partial class GbaVideo
 		if ( !GpuReady ) return;
 		Array.Copy( _oldCharBase, _frameOldCharBase, 2 );
 		Array.Copy( _oldCharBaseFirstY, _frameOldCharBaseFirstY, 2 );
+		_frameOamTotal[_writeSlot] = _oamBatchOffset + _oamMax;
 		Interlocked.Exchange( ref _readSlot, _writeSlot );
 		_writeSlot ^= 1;
 	}
@@ -349,12 +365,10 @@ public partial class GbaVideo
 		var scanlines = _scanlineFrames[slot];
 
 		_gpuScanlines.SetData( scanlines );
-		int sprCount = _spriteCountFrames[slot];
-		_gpuSprites.SetData( _spriteFrames[slot].AsSpan( 0, Math.Max( 1, sprCount ) ) );
+		int totalSprites = _frameOamTotal[slot];
+		_gpuSprites.SetData( _spriteFrames[slot].AsSpan( 0, Math.Max( 1, totalSprites ) ) );
 		_gpuVram.SetData( _vramFrames[slot] );
 		_gpuPalette.SetData( _paletteFrames[slot] );
-
-		_frameSpriteCount = sprCount;
 
 		uint modesMask = 0;
 		for ( int y = 0; y < GbaConstants.VisibleLines; y++ )
@@ -372,7 +386,6 @@ public partial class GbaVideo
 		cmd.Attributes.Set( "Scale", GpuScale );
 
 		cmd.Attributes.Set( "Sprites", _gpuSprites );
-		cmd.Attributes.Set( "SpriteCount", _frameSpriteCount );
 		cmd.Attributes.Set( "OutputColor", _objColorTex );
 		cmd.Attributes.Set( "OutputFlags", _objFlagsTex );
 		cmd.Attributes.Set( "ObjWindowMask", _objWindowMaskTex );

@@ -36,6 +36,10 @@ public partial class GbaVideo
 	internal uint[] _oldCharBase = new uint[2];
 	internal int[] _oldCharBaseFirstY = new int[2];
 
+	internal bool _oamDirty = true;
+	internal int _oamBatchOffset;
+	internal int _oamMax;
+
 	public GbaVideo( Gba gba )
 	{
 		Gba = gba;
@@ -65,6 +69,10 @@ public partial class GbaVideo
 		Array.Clear( _wasFullyEnabled );
 		_oldCharBase[0] = 0; _oldCharBase[1] = 0;
 		_oldCharBaseFirstY[0] = 0; _oldCharBaseFirstY[1] = 0;
+
+		_oamDirty = true;
+		_oamBatchOffset = 0;
+		_oamMax = 0;
 	}
 
 	public void WriteDispCnt( ushort value )
@@ -183,9 +191,12 @@ public partial class GbaVideo
 				Gba.Io.RaiseIrq( GbaIrq.VBlank );
 			Gba.Dma.OnVBlank();
 
-			PrepareSprites();
 			SnapshotVram();
 			CommitFrame();
+
+			_oamDirty = true;
+			_oamBatchOffset = 0;
+			_oamMax = 0;
 
 			BgX[0] = BgRefX[0];
 			BgY[0] = BgRefY[0];

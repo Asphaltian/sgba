@@ -25,6 +25,7 @@ struct ScanlineState
 	uint WinOutPad;
 	int FirstAffine;
 	uint EnabledAtYMask;
+	uint OamState;
 };
 
 struct GpuSprite
