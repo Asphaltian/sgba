@@ -21,7 +21,7 @@ public partial class GbaBios
 			{
 				uint val = fill ? fillVal : Gba.Memory.Load32( src );
 				Gba.Memory.Store32( dst, val );
-				if ( !fill ) src += 4;
+				src += 4;
 				dst += 4;
 			}
 		}
@@ -40,16 +40,32 @@ public partial class GbaBios
 			{
 				for ( int i = 0; i < count; i++ )
 				{
-					ushort val;
+					ushort val = Gba.Memory.Load16( src );
 					if ( (src & 1) != 0 )
-						val = Gba.Memory.Load8( src );
-					else
-						val = Gba.Memory.Load16( src );
+						val = (ushort)(val >> 8);
 					Gba.Memory.Store16( dst, val );
 					src += 2;
 					dst += 2;
 				}
 			}
+		}
+
+		int srcRegion = (int)(Gba.Cpu.Registers[0] >> 24) & 0xF;
+		int dstRegion = (int)(Gba.Cpu.Registers[1] >> 24) & 0xF;
+
+		if ( is32 )
+		{
+			int loadCost = 2 + Gba.Memory.WaitstatesNonseq32[srcRegion];
+			int storeCost = 2 + Gba.Memory.WaitstatesNonseq32[dstRegion];
+			int perIter = loadCost + storeCost + 3;
+			BiosStall = 30 + count * perIter;
+		}
+		else
+		{
+			int loadCost = 2 + Gba.Memory.WaitstatesNonseq16[srcRegion];
+			int storeCost = 1 + Gba.Memory.WaitstatesNonseq16[dstRegion];
+			int perIter = fill ? (storeCost + 3) : (loadCost + storeCost + 3);
+			BiosStall = 30 + count * perIter;
 		}
 	}
 
@@ -105,10 +121,10 @@ public partial class GbaBios
 			short cy = (short)Gba.Memory.Load16( src + 10 );
 			float sx = (short)Gba.Memory.Load16( src + 12 ) / 256.0f;
 			float sy = (short)Gba.Memory.Load16( src + 14 ) / 256.0f;
-			double theta = (Gba.Memory.Load16( src + 16 ) >> 8) / 128.0 * Math.PI;
+			float theta = (Gba.Memory.Load16( src + 16 ) >> 8) / 128.0f * MathF.PI;
 
-			float cosA = (float)Math.Cos( theta );
-			float sinA = (float)Math.Sin( theta );
+			float cosA = MathF.Cos( theta );
+			float sinA = MathF.Sin( theta );
 
 			float a = cosA * sx;
 			float b = -sinA * sx;
@@ -139,23 +155,22 @@ public partial class GbaBios
 
 		for ( int i = 0; i < count; i++ )
 		{
-			short sx = (short)Gba.Memory.Load16( src );
-			short sy = (short)Gba.Memory.Load16( src + 2 );
-			ushort angle = Gba.Memory.Load16( src + 4 );
+			float sx = (short)Gba.Memory.Load16( src ) / 256.0f;
+			float sy = (short)Gba.Memory.Load16( src + 2 ) / 256.0f;
+			float theta = (Gba.Memory.Load16( src + 4 ) >> 8) / 128.0f * MathF.PI;
 
-			double theta = (angle >> 8) / 128.0 * Math.PI;
-			double cosA = Math.Cos( theta );
-			double sinA = Math.Sin( theta );
+			float a, b, c, d;
+			a = d = MathF.Cos( theta );
+			b = c = MathF.Sin( theta );
+			a *= sx;
+			b *= -sx;
+			c *= sy;
+			d *= sy;
 
-			short pa = (short)(cosA * sx);
-			short pb = (short)(-sinA * sx);
-			short pc = (short)(sinA * sy);
-			short pd = (short)(cosA * sy);
-
-			Gba.Memory.Store16( dst + (uint)(dstStride * 0), (ushort)pa );
-			Gba.Memory.Store16( dst + (uint)(dstStride * 1), (ushort)pb );
-			Gba.Memory.Store16( dst + (uint)(dstStride * 2), (ushort)pc );
-			Gba.Memory.Store16( dst + (uint)(dstStride * 3), (ushort)pd );
+			Gba.Memory.Store16( dst + (uint)(dstStride * 0), (ushort)(short)(a * 256) );
+			Gba.Memory.Store16( dst + (uint)(dstStride * 1), (ushort)(short)(b * 256) );
+			Gba.Memory.Store16( dst + (uint)(dstStride * 2), (ushort)(short)(c * 256) );
+			Gba.Memory.Store16( dst + (uint)(dstStride * 3), (ushort)(short)(d * 256) );
 
 			src += 8;
 			dst += (uint)(dstStride * 4);

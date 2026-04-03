@@ -28,6 +28,7 @@ public class GbaTimerController
 		var c = Channels[idx];
 		bool wasEnabled = c.Enabled;
 		bool wasCountUp = c.CountUp;
+		int oldPrescaleBits = c.PrescaleBits;
 
 		if ( wasEnabled && !wasCountUp )
 		{
@@ -54,7 +55,7 @@ public class GbaTimerController
 		{
 			reschedule = true;
 		}
-		else if ( c.Enabled && !c.CountUp )
+		else if ( c.PrescaleBits != oldPrescaleBits )
 		{
 			reschedule = true;
 		}
@@ -103,8 +104,6 @@ public class GbaTimerController
 		long currentCycle = Gba.Cpu.InstructionStartCycles & ~tickMask;
 		long ticks = (currentCycle - c.LastEvent) >> bits;
 		c.LastEvent = currentCycle;
-
-		if ( ticks <= 0 ) return;
 
 		long total = c.Counter + ticks;
 		int reload = c.Reload;

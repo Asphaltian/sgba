@@ -2,87 +2,113 @@ namespace sGBA;
 
 public partial class GbaBios
 {
-	private void LZ77UnCompWram() { LZ77Decompress( false ); }
-	private void LZ77UnCompVram() { LZ77Decompress( true ); }
+	private void LZ77UnCompWram() { LZ77Decompress( 1 ); }
+	private void LZ77UnCompVram() { LZ77Decompress( 2 ); }
 
-	private void LZ77Decompress( bool vram )
+	private void LZ77Decompress( int width )
 	{
 		uint src = Gba.Cpu.Registers[0];
 		uint dst = Gba.Cpu.Registers[1];
+		int cycles = 20;
 
 		uint header = Gba.Memory.Load32( src );
+		int remaining = (int)((header & 0xFFFFFF00) >> 8);
 		src += 4;
-		int decompSize = (int)(header >> 8);
 
-		int written = 0;
+		int blocksRemaining = 0;
+		int blockHeader = 0;
 		int halfword = 0;
 
-		while ( written < decompSize )
+		while ( remaining > 0 )
 		{
-			byte flags = Gba.Memory.Load8( src++ );
-			for ( int i = 7; i >= 0 && written < decompSize; i-- )
-			{
-				if ( (flags & (1 << i)) != 0 )
-				{
-					byte b1 = Gba.Memory.Load8( src++ );
-					byte b2 = Gba.Memory.Load8( src++ );
-					int length = ((b1 >> 4) & 0xF) + 3;
-					int offset = ((b1 & 0xF) << 8) | b2;
-					offset++;
+			cycles += 14;
 
-					uint disp = dst - (uint)offset;
-					for ( int j = 0; j < length && written < decompSize; j++ )
+			if ( blocksRemaining > 0 )
+			{
+				cycles += 18;
+
+				if ( (blockHeader & 0x80) != 0 )
+				{
+					int block = Gba.Memory.Load8( src + 1 ) | (Gba.Memory.Load8( src ) << 8);
+					src += 2;
+					uint disp = dst - (uint)(block & 0x0FFF) - 1;
+					int bytes = (block >> 12) + 3;
+
+					while ( bytes-- > 0 )
 					{
-						byte val = Gba.Memory.Load8( disp );
-						if ( vram )
+						cycles += 10;
+						if ( remaining > 0 )
 						{
-							if ( (dst & 1) == 0 )
+							--remaining;
+						}
+
+						if ( width == 2 )
+						{
+							int val = (short)Gba.Memory.Load16( disp & ~1u );
+							if ( (dst & 1) != 0 )
 							{
-								halfword = val;
-							}
-							else
-							{
+								val >>= (int)(disp & 1) * 8;
 								halfword |= val << 8;
 								Gba.Memory.Store16( dst ^ 1, (ushort)halfword );
 							}
+							else
+							{
+								val >>= (int)(disp & 1) * 8;
+								halfword = val & 0xFF;
+							}
+							cycles += 4;
 						}
 						else
 						{
-							Gba.Memory.Store8( dst, val );
+							int val = Gba.Memory.Load8( disp );
+							Gba.Memory.Store8( dst, (byte)val );
 						}
-						disp++;
-						dst++;
-						written++;
+
+						++disp;
+						++dst;
 					}
 				}
 				else
 				{
-					byte val = Gba.Memory.Load8( src++ );
-					if ( vram )
+					int val = Gba.Memory.Load8( src );
+					++src;
+
+					if ( width == 2 )
 					{
-						if ( (dst & 1) == 0 )
-						{
-							halfword = val;
-						}
-						else
+						if ( (dst & 1) != 0 )
 						{
 							halfword |= val << 8;
 							Gba.Memory.Store16( dst ^ 1, (ushort)halfword );
 						}
+						else
+						{
+							halfword = val;
+						}
 					}
 					else
 					{
-						Gba.Memory.Store8( dst, val );
+						Gba.Memory.Store8( dst, (byte)val );
 					}
-					dst++;
-					written++;
+
+					++dst;
+					--remaining;
 				}
+
+				blockHeader <<= 1;
+				--blocksRemaining;
+			}
+			else
+			{
+				blockHeader = Gba.Memory.Load8( src );
+				++src;
+				blocksRemaining = 8;
 			}
 		}
 
 		Gba.Cpu.Registers[0] = src;
 		Gba.Cpu.Registers[1] = dst;
 		Gba.Cpu.Registers[3] = 0;
+		BiosStall = cycles;
 	}
 
 	private void HuffmanUnComp()

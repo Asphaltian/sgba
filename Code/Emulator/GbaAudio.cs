@@ -238,10 +238,10 @@ public partial class GbaAudio
 	{
 		if ( !Enable ) return;
 
-		if ( (_chATimer ? 1 : 0) == timer )
+		if ( (_chALeft || _chARight) && (_chATimer ? 1 : 0) == timer )
 			SampleFifo( ref _fifoA, 1 );
 
-		if ( (_chBTimer ? 1 : 0) == timer )
+		if ( (_chBLeft || _chBRight) && (_chBTimer ? 1 : 0) == timer )
 			SampleFifo( ref _fifoB, 2 );
 	}
 
@@ -252,27 +252,21 @@ public partial class GbaAudio
 		if ( 8 - size > 4 )
 		{
 			Gba.Dma.OnFifo( dmaChannel );
-			size = FifoSize( ref fifo );
 		}
 
-		if ( fifo.Remaining == 0 )
+		if ( fifo.Remaining == 0 && size > 0 )
 		{
-			if ( size > 0 )
-			{
-				fifo.Internal = fifo.Buffer[fifo.Read];
-				fifo.Remaining = 4;
-				fifo.Read = (fifo.Read + 1) & 7;
-			}
-			else
-			{
-				fifo.Sample = 0;
-				return;
-			}
+			fifo.Internal = fifo.Buffer[fifo.Read];
+			fifo.Remaining = 4;
+			fifo.Read = (fifo.Read + 1) & 7;
 		}
 
-		fifo.Sample = (sbyte)(fifo.Internal & 0xFF);
-		fifo.Internal >>= 8;
-		fifo.Remaining--;
+		if ( fifo.Remaining > 0 )
+		{
+			fifo.Sample = (sbyte)(fifo.Internal & 0xFF);
+			fifo.Internal >>= 8;
+			fifo.Remaining--;
+		}
 	}
 
 	private static int FifoSize( ref FifoState fifo )
@@ -284,7 +278,20 @@ public partial class GbaAudio
 
 	public void Tick( int cycles )
 	{
-		_totalCycles += cycles;
+		TickTo( Gba.Cpu.Cycles );
+	}
+
+	public void FlushSamples()
+	{
+		TickTo( Gba.Cpu.Cycles );
+	}
+
+	private void TickTo( long target )
+	{
+		if ( target <= _totalCycles )
+			return;
+
+		_totalCycles = target;
 
 		if ( _totalCycles < _nextFrameSeqCycle && _totalCycles < _nextSampleCycle )
 			return;

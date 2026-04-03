@@ -157,17 +157,6 @@ public class Gba
 		Io.TickIrqDelay( cycles );
 	}
 
-	public void CheckIntrWait( GbaIrq irq )
-	{
-		if ( !Cpu.InIntrWait ) return;
-
-		if ( (Cpu.IntrWaitFlags & (ushort)irq) != 0 )
-		{
-			Cpu.InIntrWait = false;
-			Io.IME = 1;
-		}
-	}
-
 	public void SetKeyState( GbaKey key, bool pressed )
 	{
 		if ( pressed )

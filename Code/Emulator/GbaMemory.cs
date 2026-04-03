@@ -159,34 +159,7 @@ public class GbaMemory
 	public void InstallHleBios()
 	{
 		Array.Clear( Bios, 0, GbaConstants.BiosSize );
-
-		WriteBiosWord( 0x00, 0xEAFFFFFE );
-		WriteBiosWord( 0x04, 0xEAFFFFFE );
-		WriteBiosWord( 0x08, 0xE1B0F00E );
-		WriteBiosWord( 0x0C, 0xEAFFFFFE );
-		WriteBiosWord( 0x10, 0xEAFFFFFE );
-		WriteBiosWord( 0x14, 0xEAFFFFFE );
-		WriteBiosWord( 0x18, 0xEA000042 );
-
-		int off = 0x128;
-
-		WriteBiosWord( off, 0xE92D500F ); off += 4;
-		WriteBiosWord( off, 0xE3A00301 ); off += 4;
-		WriteBiosWord( off, 0xE28FE000 ); off += 4;
-		WriteBiosWord( off, 0xE510F004 ); off += 4;
-		WriteBiosWord( off, 0xE8BD500F ); off += 4;
-		WriteBiosWord( off, 0xE25EF004 ); off += 4;
-
-		WriteBiosWord( off, 0xE3A02004 ); off += 4;
-		WriteBiosWord( off, 0xE3A02004 );
-	}
-
-	private void WriteBiosWord( int offset, uint value )
-	{
-		Bios[offset + 0] = (byte)value;
-		Bios[offset + 1] = (byte)(value >> 8);
-		Bios[offset + 2] = (byte)(value >> 16);
-		Bios[offset + 3] = (byte)(value >> 24);
+		GbaBios.HleBiosBlob.AsSpan().CopyTo( Bios.AsSpan() );
 	}
 
 	public byte Load8( uint address )

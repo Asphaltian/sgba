@@ -133,25 +133,10 @@ public class GbaDmaController
 		if ( (c.Reg & 0x8000) == 0 ) return;
 		if ( ((c.Reg >> 12) & 3) != 3 ) return;
 
-		int srcRegion = (int)(c.NextSource >> 24) & 0xF;
-		int dstRegion = (int)(c.NextDest >> 24) & 0xF;
-		int nonseq = Gba.Memory.WaitstatesNonseq32[srcRegion] + Gba.Memory.WaitstatesNonseq32[dstRegion];
-		int seq = Gba.Memory.WaitstatesSeq32[srcRegion] + Gba.Memory.WaitstatesSeq32[dstRegion];
-		int totalCycles = (2 + nonseq) + 3 * (2 + seq);
-
-		for ( int i = 0; i < 4; i++ )
-		{
-			if ( c.NextSource >= 0x02000000 )
-				c.Latch = Gba.Memory.Load32( c.NextSource );
-			Gba.Memory.Store32( c.NextDest, c.Latch );
-			c.NextSource += (uint)c.SourceOffset;
-		}
-
-		Gba.Cpu.OpenBusPrefetch = c.Latch;
-		ChargeCycles( totalCycles );
-
-		if ( (c.Reg & 0x4000) != 0 )
-			Gba.Io.RaiseIrq( (GbaIrq)(1 << (8 + channel)) );
+		c.When = Gba.Cpu.Cycles;
+		c.NextCount = 4;
+		c.IsFirstUnit = true;
+		Update();
 	}
 
 	public void Update()
@@ -338,14 +323,6 @@ public class GbaDmaController
 			Gba.Io.RaiseIrq( (GbaIrq)(1 << (8 + number)) );
 
 		return extraCycles;
-	}
-
-	private void ChargeCycles( int cycles )
-	{
-		Gba.Cpu.Cycles += cycles;
-		Gba.Timers.Tick( cycles );
-		Gba.Audio.Tick( cycles );
-		Gba.Io.TickIrqDelay( cycles );
 	}
 }
 

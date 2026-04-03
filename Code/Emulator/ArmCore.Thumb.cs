@@ -194,7 +194,8 @@ public partial class ArmCore
 					else if ( shift == 32 ) { FlagC = (a & 1) != 0; result = 0; }
 					else { FlagC = false; result = 0; }
 					FlagN = (result & 0x80000000) != 0; FlagZ = result == 0;
-					Gprs[rd] = result; Cycles++;
+					Gprs[rd] = result;
+					int lslCr = (int)((Gprs[15] >> 24) & 0xF); Cycles += Memory.WaitstatesNonseq16[lslCr] - Memory.WaitstatesSeq16[lslCr];
 				}
 				break;
 			case 0x3:
@@ -205,7 +206,8 @@ public partial class ArmCore
 					else if ( shift == 32 ) { FlagC = (a & 0x80000000) != 0; result = 0; }
 					else { FlagC = false; result = 0; }
 					FlagN = (result & 0x80000000) != 0; FlagZ = result == 0;
-					Gprs[rd] = result; Cycles++;
+					Gprs[rd] = result;
+					int lsrCr = (int)((Gprs[15] >> 24) & 0xF); Cycles += Memory.WaitstatesNonseq16[lsrCr] - Memory.WaitstatesSeq16[lsrCr];
 				}
 				break;
 			case 0x4:
@@ -215,7 +217,8 @@ public partial class ArmCore
 					else if ( shift < 32 ) { FlagC = ((a >> (int)(shift - 1)) & 1) != 0; result = (uint)((int)a >> (int)shift); }
 					else { FlagC = (a & 0x80000000) != 0; result = FlagC ? 0xFFFFFFFF : 0u; }
 					FlagN = (result & 0x80000000) != 0; FlagZ = result == 0;
-					Gprs[rd] = result; Cycles++;
+					Gprs[rd] = result;
+					int asrCr = (int)((Gprs[15] >> 24) & 0xF); Cycles += Memory.WaitstatesNonseq16[asrCr] - Memory.WaitstatesSeq16[asrCr];
 				}
 				break;
 			case 0x5: result = a + b + (FlagC ? 1u : 0); SetAdcFlags( a, b, FlagC ); Gprs[rd] = result; break;
@@ -226,7 +229,8 @@ public partial class ArmCore
 					if ( shift == 0 ) { result = a; }
 					else { shift &= 31; if ( shift == 0 ) { FlagC = (a & 0x80000000) != 0; result = a; } else { result = Ror( a, (int)shift ); FlagC = (result & 0x80000000) != 0; } }
 					FlagN = (result & 0x80000000) != 0; FlagZ = result == 0;
-					Gprs[rd] = result; Cycles++;
+					Gprs[rd] = result;
+					int rorCr = (int)((Gprs[15] >> 24) & 0xF); Cycles += Memory.WaitstatesNonseq16[rorCr] - Memory.WaitstatesSeq16[rorCr];
 				}
 				break;
 			case 0x8: result = a & b; SetLogicFlags( result, FlagC ); break;
@@ -482,6 +486,7 @@ public partial class ArmCore
 		bool extraReg = ((opcode >> 8) & 1) != 0;
 		byte regList = (byte)(opcode & 0xFF);
 		int count = BitCount( regList ) + (extraReg ? 1 : 0);
+		int instructionRegion = (int)((Gprs[15] >> 24) & 0xF);
 
 		if ( isLoad )
 		{
@@ -525,13 +530,12 @@ public partial class ArmCore
 		{
 			int firstWait = Memory.WaitstatesNonseq32[dr];
 			int seqWait = Memory.WaitstatesSeq32[dr];
-			int blockWait = firstWait + 1 + (count - 1) * (seqWait + 1) + (isLoad ? 1 : 0);
+			int blockWait = seqWait - firstWait + count * (seqWait + 1) + (isLoad ? 1 : 0);
 			if ( dr < 8 )
 				blockWait = Memory.MemoryStall( Gprs[15], blockWait );
 			Cycles += blockWait;
 		}
-		int cr = (int)((Gprs[15] >> 24) & 0xF);
-		Cycles += Memory.WaitstatesNonseq16[cr] - Memory.WaitstatesSeq16[cr];
+		Cycles += Memory.WaitstatesNonseq16[instructionRegion] - Memory.WaitstatesSeq16[instructionRegion];
 	}
 
 	private void ThumbBlockTransfer( uint opcode )
@@ -540,6 +544,7 @@ public partial class ArmCore
 		bool isLoad = ((opcode >> 11) & 1) != 0;
 		byte regList = (byte)(opcode & 0xFF);
 		uint addr = Gprs[rn];
+		int instructionRegion = (int)((Gprs[15] >> 24) & 0xF);
 
 		if ( regList == 0 )
 		{
@@ -555,12 +560,12 @@ public partial class ArmCore
 			Gprs[rn] += 0x40;
 
 			int dr0 = (int)((addr >> 24) & 0xF);
-			int emptyWait = Memory.WaitstatesNonseq32[dr0] + (isLoad ? 3 : 2);
+			int seqWait = Memory.WaitstatesSeq32[dr0];
+			int emptyWait = 2 * seqWait - Memory.WaitstatesNonseq32[dr0] + 16 + (isLoad ? 1 : 0);
 			if ( dr0 < 8 )
 				emptyWait = Memory.MemoryStall( Gprs[15], emptyWait );
 			Cycles += emptyWait;
-			int cr0 = (int)((Gprs[15] >> 24) & 0xF);
-			Cycles += Memory.WaitstatesNonseq16[cr0] - Memory.WaitstatesSeq16[cr0];
+			Cycles += Memory.WaitstatesNonseq16[instructionRegion] - Memory.WaitstatesSeq16[instructionRegion];
 			return;
 		}
 
@@ -585,15 +590,14 @@ public partial class ArmCore
 			int blockRegion = (int)((startAddr >> 24) & 0xF);
 			int firstWait = Memory.WaitstatesNonseq32[blockRegion];
 			int seqWait = Memory.WaitstatesSeq32[blockRegion];
-			int blockWait = firstWait + 1 + (count - 1) * (seqWait + 1) + (isLoad ? 1 : 0);
+			int blockWait = seqWait - firstWait + count * (seqWait + 1) + (isLoad ? 1 : 0);
 			uint endAddr = startAddr + (uint)(count * 4);
 			int endRegion = (int)((endAddr >> 24) & 0xF);
 			if ( endRegion < 8 )
 				blockWait = Memory.MemoryStall( Gprs[15], blockWait );
 			Cycles += blockWait;
 		}
-		int cr = (int)((Gprs[15] >> 24) & 0xF);
-		Cycles += Memory.WaitstatesNonseq16[cr] - Memory.WaitstatesSeq16[cr];
+		Cycles += Memory.WaitstatesNonseq16[instructionRegion] - Memory.WaitstatesSeq16[instructionRegion];
 	}
 
 	private void ThumbCondBranch( uint opcode )
@@ -639,18 +643,7 @@ public partial class ArmCore
 	{
 		uint comment = opcode & 0xFF;
 		if ( Gba.Bios.HandleSwi( comment ) )
-		{
-			int biosStall = Gba.Bios.BiosStall;
-			if ( biosStall > 0 )
-			{
-				int region = (int)((Gprs[15] >> 24) & 0xF);
-				Cycles += biosStall + 45
-					+ Memory.WaitstatesNonseq16[region]
-					+ Memory.WaitstatesNonseq16[region]
-					+ Memory.WaitstatesSeq16[region];
-			}
 			return;
-		}
 
 		uint savedCpsr = GetCpsrRaw();
 		SetPrivilegeMode( PrivilegeMode.Supervisor );

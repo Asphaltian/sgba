@@ -7,6 +7,9 @@ public partial class GbaAudio
 		if ( offset >= 0x60 && offset < 0x80 && !Enable )
 			return;
 
+		if ( offset != 0x82 )
+			FlushSamples();
+
 		switch ( offset )
 		{
 			case 0x60:
@@ -82,6 +85,9 @@ public partial class GbaAudio
 	{
 		if ( regOffset >= 0x60 && regOffset < 0x80 && !Enable )
 			return;
+
+		if ( regOffset != 0x82 )
+			FlushSamples();
 
 		switch ( regOffset )
 		{
@@ -629,6 +635,7 @@ public partial class GbaAudio
 			_ch3Size = false;
 			_ch3Bank = false;
 			_ch3Volume = 0;
+			_ch3Sample = 0;
 
 			_psgVolume = 0;
 			_volumeChA = false;

@@ -4,6 +4,10 @@ namespace sGBA;
 
 public partial class ArmCore
 {
+	private const uint PsrUserMask  = 0xF0000000u;
+	private const uint PsrPrivMask  = 0x000000CFu;
+	private const uint PsrStateMask = 0x00000020u;
+
 	public uint[] Gprs = new uint[16];
 	public uint[] Registers => Gprs;
 
@@ -15,16 +19,11 @@ public partial class ArmCore
 
 	private readonly uint[][] _bankedRegisters = new uint[6][];
 	private readonly uint[] _bankedSPSRs = new uint[6];
-	private readonly uint[] _fiqRegsHi = new uint[5];
-	private readonly uint[] _usrRegsHi = new uint[5];
 
 	public long Cycles;
 	public long InstructionStartCycles;
 	public bool Halted;
 	public bool IrqPending;
-	public bool InIntrWait;
-	public bool InIrqContext;
-	public ushort IntrWaitFlags;
 	public uint OpenBusPrefetch;
 
 	public uint[] PcTrace = new uint[128];
@@ -51,7 +50,7 @@ public partial class ArmCore
 		Gba = gba;
 		Memory = gba.Memory;
 		for ( int i = 0; i < 6; i++ )
-			_bankedRegisters[i] = new uint[2];
+			_bankedRegisters[i] = new uint[7];
 	}
 
 	public void Reset()
@@ -64,8 +63,6 @@ public partial class ArmCore
 		PrivilegeMode = PrivilegeMode.System;
 		Halted = false;
 		IrqPending = false;
-		InIntrWait = false;
-		IntrWaitFlags = 0;
 		_prefetchFlushed = true;
 		Cycles = 0;
 
@@ -73,6 +70,11 @@ public partial class ArmCore
 		{
 			_bankedRegisters[i][0] = 0;
 			_bankedRegisters[i][1] = 0;
+			_bankedRegisters[i][2] = 0;
+			_bankedRegisters[i][3] = 0;
+			_bankedRegisters[i][4] = 0;
+			_bankedRegisters[i][5] = 0;
+			_bankedRegisters[i][6] = 0;
 			_bankedSPSRs[i] = 0;
 		}
 	}
@@ -89,7 +91,14 @@ public partial class ArmCore
 		IrqDisable = false;
 		FiqDisable = false;
 		Gprs[15] = 0x08000000;
-		_prefetchFlushed = true;
+
+		Gprs[15] &= ~3u;
+		_prefetch0 = Memory.Load32( Gprs[15] );
+		Gprs[15] += 4;
+		_prefetch1 = Memory.Load32( Gprs[15] );
+		Gprs[15] += 4;
+		Memory.LastPrefetchedPc = 0;
+		_prefetchFlushed = false;
 	}
 
 	public void Run( long targetCycles )
@@ -124,12 +133,6 @@ public partial class ArmCore
 				IrqPending = false;
 				FlushPipeline();
 				_prefetchFlushed = false;
-			}
-
-			if ( InIntrWait && !Halted && !IrqDisable && !InIrqContext )
-			{
-				Halted = true;
-				return;
 			}
 
 			uint instrAddr = ThumbMode ? Gprs[15] - 4 : Gprs[15] - 8;
@@ -230,8 +233,6 @@ public partial class ArmCore
 		Gprs[15] = GbaConstants.BaseIrq;
 		_prefetchFlushed = true;
 		Halted = false;
-		if ( InIntrWait )
-			InIrqContext = true;
 	}
 
 	public uint GetCpsrRaw()
@@ -274,43 +275,59 @@ public partial class ArmCore
 			   mode == PrivilegeMode.Undefined || mode == PrivilegeMode.System;
 	}
 
-	public void SetPrivilegeMode( PrivilegeMode newMode )
+	public void SetPrivilegeMode( PrivilegeMode mode )
 	{
-		int oldBank = GetBankIndex( PrivilegeMode );
-		int newBank = GetBankIndex( newMode );
+		if ( mode == PrivilegeMode )
+			return;
 
-		if ( oldBank != newBank )
+		RegisterBank newBank = SelectBank( mode );
+		RegisterBank oldBank = SelectBank( PrivilegeMode );
+
+		if ( newBank != oldBank )
 		{
-			_bankedRegisters[oldBank][0] = Gprs[13];
-			_bankedRegisters[oldBank][1] = Gprs[14];
-
-			if ( PrivilegeMode == PrivilegeMode.FIQ )
+			if ( mode == PrivilegeMode.FIQ || PrivilegeMode == PrivilegeMode.FIQ )
 			{
-				for ( int i = 0; i < 5; i++ ) { _fiqRegsHi[i] = Gprs[8 + i]; Gprs[8 + i] = _usrRegsHi[i]; }
+				int oldFiqBank = oldBank == RegisterBank.Fiq ? 1 : 0;
+				int newFiqBank = newBank == RegisterBank.Fiq ? 1 : 0;
+				_bankedRegisters[oldFiqBank][2] = Gprs[8];
+				_bankedRegisters[oldFiqBank][3] = Gprs[9];
+				_bankedRegisters[oldFiqBank][4] = Gprs[10];
+				_bankedRegisters[oldFiqBank][5] = Gprs[11];
+				_bankedRegisters[oldFiqBank][6] = Gprs[12];
+				Gprs[8] = _bankedRegisters[newFiqBank][2];
+				Gprs[9] = _bankedRegisters[newFiqBank][3];
+				Gprs[10] = _bankedRegisters[newFiqBank][4];
+				Gprs[11] = _bankedRegisters[newFiqBank][5];
+				Gprs[12] = _bankedRegisters[newFiqBank][6];
 			}
-
-			Gprs[13] = _bankedRegisters[newBank][0];
-			Gprs[14] = _bankedRegisters[newBank][1];
-
-			if ( newMode == PrivilegeMode.FIQ )
-			{
-				for ( int i = 0; i < 5; i++ ) { _usrRegsHi[i] = Gprs[8 + i]; Gprs[8 + i] = _fiqRegsHi[i]; }
-			}
+			_bankedRegisters[(int)oldBank][0] = Gprs[13];
+			_bankedRegisters[(int)oldBank][1] = Gprs[14];
+			Gprs[13] = _bankedRegisters[(int)newBank][0];
+			Gprs[14] = _bankedRegisters[(int)newBank][1];
 		}
 
-		PrivilegeMode = newMode;
+		PrivilegeMode = mode;
 	}
 
-	private int GetBankIndex( PrivilegeMode mode )
+	private static RegisterBank SelectBank( PrivilegeMode mode )
 	{
 		switch ( mode )
 		{
-			case PrivilegeMode.FIQ: return 0;
-			case PrivilegeMode.IRQ: return 1;
-			case PrivilegeMode.Supervisor: return 2;
-			case PrivilegeMode.Abort: return 3;
-			case PrivilegeMode.Undefined: return 4;
-			default: return 5;
+			case PrivilegeMode.User:
+			case PrivilegeMode.System:
+				return RegisterBank.None;
+			case PrivilegeMode.FIQ:
+				return RegisterBank.Fiq;
+			case PrivilegeMode.IRQ:
+				return RegisterBank.Irq;
+			case PrivilegeMode.Supervisor:
+				return RegisterBank.Supervisor;
+			case PrivilegeMode.Abort:
+				return RegisterBank.Abort;
+			case PrivilegeMode.Undefined:
+				return RegisterBank.Undefined;
+			default:
+				return RegisterBank.None;
 		}
 	}
 
@@ -318,14 +335,12 @@ public partial class ArmCore
 	{
 		if ( PrivilegeMode == PrivilegeMode.User || PrivilegeMode == PrivilegeMode.System )
 			return GetCpsrRaw();
-		int bank = GetBankIndex( PrivilegeMode );
-		return _bankedSPSRs[bank];
+		return _bankedSPSRs[(int)SelectBank( PrivilegeMode )];
 	}
 
 	public void SetSpsr( uint value )
 	{
-		int bank = GetBankIndex( PrivilegeMode );
-		_bankedSPSRs[bank] = value;
+		_bankedSPSRs[(int)SelectBank( PrivilegeMode )] = value;
 	}
 
 	private uint GetUserReg( int reg )
@@ -334,10 +349,10 @@ public partial class ArmCore
 			return Gprs[reg];
 
 		if ( reg >= 8 && reg <= 12 && PrivilegeMode == PrivilegeMode.FIQ )
-			return _usrRegsHi[reg - 8];
+			return _bankedRegisters[(int)RegisterBank.None][reg - 6];
 
 		if ( reg == 13 || reg == 14 )
-			return _bankedRegisters[5][reg - 13];
+			return _bankedRegisters[(int)RegisterBank.None][reg - 13];
 
 		return Gprs[reg];
 	}
@@ -352,13 +367,13 @@ public partial class ArmCore
 
 		if ( reg >= 8 && reg <= 12 && PrivilegeMode == PrivilegeMode.FIQ )
 		{
-			_usrRegsHi[reg - 8] = value;
+			_bankedRegisters[(int)RegisterBank.None][reg - 6] = value;
 			return;
 		}
 
 		if ( reg == 13 || reg == 14 )
 		{
-			_bankedRegisters[5][reg - 13] = value;
+			_bankedRegisters[(int)RegisterBank.None][reg - 13] = value;
 			return;
 		}
 
@@ -486,4 +501,14 @@ public enum PrivilegeMode : uint
 	Abort = 0x17,
 	Undefined = 0x1B,
 	System = 0x1F,
+}
+
+public enum RegisterBank
+{
+	None = 0,
+	Fiq = 1,
+	Irq = 2,
+	Supervisor = 3,
+	Abort = 4,
+	Undefined = 5,
 }
