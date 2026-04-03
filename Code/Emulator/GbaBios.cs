@@ -15,35 +15,99 @@ public partial class GbaBios
 
 	public bool HandleSwi( uint comment )
 	{
-		HleActive = true;
-		BiosStall = 0;
 		switch ( comment )
 		{
-			case 0x00: SoftReset(); break;
+			case 0xF0:
+				Gba.Cpu.Registers[11] = (uint)BiosStall;
+				return true;
+			case 0xFA:
+				return true;
+		}
+
+		HleActive = true;
+		BiosStall = 0;
+		bool useStall = false;
+
+		switch ( comment )
+		{
+			case 0x00: // SoftReset
+				HleActive = false;
+				return false;
 			case 0x01: RegisterRamReset(); break;
-			case 0x02: Halt(); break;
+			case 0x02: // Halt
+				HleActive = false;
+				return false;
 			case 0x03: Stop(); break;
-			case 0x04: IntrWait(); break;
-			case 0x05: VBlankIntrWait(); break;
-			case 0x06: Div(); break;
-			case 0x07: DivArm(); break;
-			case 0x08: Sqrt(); break;
-			case 0x09: ArcTan(); break;
-			case 0x0A: ArcTan2(); break;
-			case 0x0B: CpuSet(); break;
-			case 0x0C: CpuFastSet(); break;
+			case 0x04: // IntrWait
+			case 0x05: // VBlankIntrWait
+				HleActive = false;
+				return false;
+			case 0x06:
+				useStall = true;
+				Div();
+				break;
+			case 0x07:
+				useStall = true;
+				DivArm();
+				break;
+			case 0x08:
+				useStall = true;
+				Sqrt();
+				break;
+			case 0x09:
+				useStall = true;
+				ArcTan();
+				break;
+			case 0x0A:
+				useStall = true;
+				ArcTan2();
+				break;
+			case 0x0B: // CpuSet
+			case 0x0C: // CpuFastSet
+				if ( (Gba.Cpu.Registers[0] >> 24) < 2 ) break;
+				HleActive = false;
+				return false;
 			case 0x0D: GetBiosChecksum(); break;
 			case 0x0E: BgAffineSet(); break;
 			case 0x0F: ObjAffineSet(); break;
-			case 0x10: BitUnPack(); break;
-			case 0x11: LZ77UnCompWram(); break;
-			case 0x12: LZ77UnCompVram(); break;
-			case 0x13: HuffmanUnComp(); break;
-			case 0x14: RLUnCompWram(); break;
-			case 0x15: RLUnCompVram(); break;
-			case 0x16: Diff8BitUnFilterWram(); break;
-			case 0x17: Diff8BitUnFilterVram(); break;
-			case 0x18: Diff16BitUnFilter(); break;
+			case 0x10:
+				if ( Gba.Cpu.Registers[0] < 0x02000000 ) break;
+				BitUnPack();
+				break;
+			case 0x11:
+				if ( (Gba.Cpu.Registers[0] & 0x0E000000) == 0 ) break;
+				useStall = true;
+				LZ77UnCompWram();
+				break;
+			case 0x12:
+				if ( (Gba.Cpu.Registers[0] & 0x0E000000) == 0 ) break;
+				useStall = true;
+				LZ77UnCompVram();
+				break;
+			case 0x13:
+				if ( (Gba.Cpu.Registers[0] & 0x0E000000) == 0 ) break;
+				HuffmanUnComp();
+				break;
+			case 0x14:
+				if ( (Gba.Cpu.Registers[0] & 0x0E000000) == 0 ) break;
+				RLUnCompWram();
+				break;
+			case 0x15:
+				if ( (Gba.Cpu.Registers[0] & 0x0E000000) == 0 ) break;
+				RLUnCompVram();
+				break;
+			case 0x16:
+				if ( (Gba.Cpu.Registers[0] & 0x0E000000) == 0 ) break;
+				Diff8BitUnFilterWram();
+				break;
+			case 0x17:
+				if ( (Gba.Cpu.Registers[0] & 0x0E000000) == 0 ) break;
+				Diff8BitUnFilterVram();
+				break;
+			case 0x18:
+				if ( (Gba.Cpu.Registers[0] & 0x0E000000) == 0 ) break;
+				Diff16BitUnFilter();
+				break;
 			case 0x19: SoundBias(); break;
 			case 0x1A: SoundDriverInit(); break;
 			case 0x1B: SoundDriverMode(); break;
@@ -51,39 +115,39 @@ public partial class GbaBios
 			case 0x1D: SoundDriverVSync(); break;
 			case 0x1E: SoundChannelClear(); break;
 			case 0x1F: MidiKey2Freq(); break;
+			case 0x2A: // SoundDriverGetJumpList
+				HleActive = false;
+				return false;
 			default:
 				break;
 		}
+
+		if ( useStall && BiosStall >= 18 )
+		{
+			BiosStall -= 18;
+			Gba.Cpu.Cycles += BiosStall & 3;
+			BiosStall &= ~3;
+			HleActive = false;
+			return false;
+		}
+
+		if ( useStall )
+		{
+			Gba.Cpu.Cycles += BiosStall;
+		}
+
 		HleActive = false;
+
+		int region = (int)((Gba.Cpu.Gprs[15] >> 24) & 0xF);
+		Gba.Cpu.Cycles += 45 + Gba.Memory.WaitstatesNonseq16[region];
+		if ( Gba.Cpu.ThumbMode )
+			Gba.Cpu.Cycles += Gba.Memory.WaitstatesNonseq16[region] + Gba.Memory.WaitstatesSeq16[region];
+		else
+			Gba.Cpu.Cycles += Gba.Memory.WaitstatesNonseq32[region] + Gba.Memory.WaitstatesSeq32[region];
 
 		Gba.Memory.BiosPrefetch = 0xE3A02004;
 
 		return true;
-	}
-
-	private void SoftReset()
-	{
-		byte flag = Gba.Memory.Load8( 0x03007FFA );
-		for ( int i = 0; i < 0x200; i++ )
-			Gba.Memory.Store8( 0x03007E00u + (uint)i, 0 );
-
-		for ( int i = 0; i < 13; i++ )
-			Gba.Cpu.Registers[i] = 0;
-
-		Gba.Cpu.Registers[13] = GbaConstants.SpBaseSystem;
-		Gba.Cpu.BankedSPSRs[1] = 0;
-		Gba.Cpu.BankedSPSRs[2] = 0;
-
-		Gba.Cpu.SetPrivilegeMode( PrivilegeMode.IRQ );
-		Gba.Cpu.Registers[13] = GbaConstants.SpBaseIrq;
-		Gba.Cpu.SetPrivilegeMode( PrivilegeMode.Supervisor );
-		Gba.Cpu.Registers[13] = GbaConstants.SpBaseSupervisor;
-		Gba.Cpu.SetPrivilegeMode( PrivilegeMode.System );
-		Gba.Cpu.Registers[13] = GbaConstants.SpBaseSystem;
-
-		uint entry = flag != 0 ? 0x02000000u : 0x08000000u;
-		Gba.Cpu.Registers[15] = entry;
-		Gba.Cpu.FlushPipeline();
 	}
 
 	private void GetBiosChecksum()
@@ -203,38 +267,8 @@ public partial class GbaBios
 		}
 	}
 
-	private void Halt()
-	{
-		Gba.Cpu.Halted = true;
-	}
-
 	private void Stop()
 	{
 		Gba.Cpu.Halted = true;
-	}
-
-	private void IntrWait()
-	{
-		bool discardOld = Gba.Cpu.Registers[0] != 0;
-		uint flags = Gba.Cpu.Registers[1];
-
-		if ( discardOld )
-		{
-			uint biosIF = Gba.Memory.Load16( 0x03007FF8 );
-			biosIF &= ~flags;
-			Gba.Memory.Store16( 0x03007FF8, (ushort)biosIF );
-		}
-
-		Gba.Cpu.Halted = true;
-		Gba.Cpu.IntrWaitFlags = (ushort)flags;
-		Gba.Cpu.InIntrWait = true;
-		Gba.Io.IME = 1;
-	}
-
-	private void VBlankIntrWait()
-	{
-		Gba.Cpu.Registers[0] = 1;
-		Gba.Cpu.Registers[1] = 1;
-		IntrWait();
 	}
 }

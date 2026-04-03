@@ -195,11 +195,10 @@ public partial class ArmCore
 			Gprs[rd] = result;
 			if ( rd == 15 )
 			{
-				if ( setFlags )
+				if ( setFlags && PrivilegeMode != PrivilegeMode.User && PrivilegeMode != PrivilegeMode.System )
 				{
 					uint spsr = GetSpsr();
 					SetCpsr( spsr );
-					InIrqContext = false;
 				}
 				_prefetchFlushed = true;
 			}
@@ -536,9 +535,11 @@ public partial class ArmCore
 		bool writeBack = ((opcode >> 21) & 1) != 0;
 		bool isLoad = ((opcode >> 20) & 1) != 0;
 		ushort regList = (ushort)(opcode & 0xFFFF);
+		int instructionRegion = (int)((Gprs[15] >> 24) & 0xF);
 
 		if ( regList == 0 )
 		{
+			uint origAddr = Gprs[rn];
 			if ( isLoad )
 			{
 				Gprs[15] = Memory.Load32( Gprs[rn] );
@@ -553,13 +554,13 @@ public partial class ArmCore
 			else
 				Gprs[rn] -= 0x40;
 
-			int dr0 = (int)((Gprs[rn] >> 24) & 0xF);
-			int emptyWait = Memory.WaitstatesNonseq32[dr0] + (isLoad ? 3 : 2);
+			int dr0 = (int)((origAddr >> 24) & 0xF);
+			int seqWait = Memory.WaitstatesSeq32[dr0];
+			int emptyWait = 2 * seqWait - Memory.WaitstatesNonseq32[dr0] + 16 + (isLoad ? 1 : 0);
 			if ( dr0 < 8 )
 				emptyWait = Memory.MemoryStall( Gprs[15], emptyWait );
 			Cycles += emptyWait;
-			int cr0 = (int)((Gprs[15] >> 24) & 0xF);
-			Cycles += Memory.WaitstatesNonseq32[cr0] - Memory.WaitstatesSeq32[cr0];
+			Cycles += Memory.WaitstatesNonseq32[instructionRegion] - Memory.WaitstatesSeq32[instructionRegion];
 			return;
 		}
 
@@ -590,11 +591,10 @@ public partial class ArmCore
 				if ( i == 15 )
 				{
 					_prefetchFlushed = true;
-					if ( psr )
+					if ( psr && PrivilegeMode != PrivilegeMode.User && PrivilegeMode != PrivilegeMode.System )
 					{
 						uint spsr = GetSpsr();
 						SetCpsr( spsr );
-						InIrqContext = false;
 					}
 				}
 			}
@@ -623,15 +623,14 @@ public partial class ArmCore
 			int blockRegion = (int)((startAddr >> 24) & 0xF);
 			int firstWait = Memory.WaitstatesNonseq32[blockRegion];
 			int seqWait = Memory.WaitstatesSeq32[blockRegion];
-			int blockWait = firstWait + 1 + (count - 1) * (seqWait + 1) + (isLoad ? 1 : 0);
+			int blockWait = seqWait - firstWait + count * (seqWait + 1) + (isLoad ? 1 : 0);
 			uint endAddr = startAddr + (uint)(count * 4);
 			int endRegion = (int)((endAddr >> 24) & 0xF);
 			if ( endRegion < 8 )
 				blockWait = Memory.MemoryStall( Gprs[15], blockWait );
 			Cycles += blockWait;
 		}
-		int cr = (int)((Gprs[15] >> 24) & 0xF);
-		Cycles += Memory.WaitstatesNonseq32[cr] - Memory.WaitstatesSeq32[cr];
+		Cycles += Memory.WaitstatesNonseq32[instructionRegion] - Memory.WaitstatesSeq32[instructionRegion];
 	}
 
 	private void ArmBranch( uint opcode )
@@ -662,20 +661,10 @@ public partial class ArmCore
 	{
 		uint comment = (opcode >> 16) & 0xFF;
 		if ( Gba.Bios.HandleSwi( comment ) )
-		{
-			int biosStall = Gba.Bios.BiosStall;
-			if ( biosStall > 0 )
-			{
-				int region = (int)((Gprs[15] >> 24) & 0xF);
-				Cycles += biosStall + 45
-					+ Memory.WaitstatesNonseq16[region]
-					+ Memory.WaitstatesNonseq32[region]
-					+ Memory.WaitstatesSeq32[region];
-			}
 			return;
-		}
 
-		uint savedCpsr = GetCpsrRaw(); SetPrivilegeMode( PrivilegeMode.Supervisor );
+		uint savedCpsr = GetCpsrRaw();
+		SetPrivilegeMode( PrivilegeMode.Supervisor );
 		SetSpsr( savedCpsr );
 		Gprs[14] = Gprs[15] - 4;
 		IrqDisable = true;

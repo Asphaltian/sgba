@@ -21,7 +21,7 @@ public partial class GbaBios
 			{
 				uint val = fill ? fillVal : Gba.Memory.Load32( src );
 				Gba.Memory.Store32( dst, val );
-				if ( !fill ) src += 4;
+				src += 4;
 				dst += 4;
 			}
 		}
@@ -40,16 +40,32 @@ public partial class GbaBios
 			{
 				for ( int i = 0; i < count; i++ )
 				{
-					ushort val;
+					ushort val = Gba.Memory.Load16( src );
 					if ( (src & 1) != 0 )
-						val = Gba.Memory.Load8( src );
-					else
-						val = Gba.Memory.Load16( src );
+						val = (ushort)(val >> 8);
 					Gba.Memory.Store16( dst, val );
 					src += 2;
 					dst += 2;
 				}
 			}
+		}
+
+		int srcRegion = (int)(Gba.Cpu.Registers[0] >> 24) & 0xF;
+		int dstRegion = (int)(Gba.Cpu.Registers[1] >> 24) & 0xF;
+
+		if ( is32 )
+		{
+			int loadCost = 2 + Gba.Memory.WaitstatesNonseq32[srcRegion];
+			int storeCost = 2 + Gba.Memory.WaitstatesNonseq32[dstRegion];
+			int perIter = loadCost + storeCost + 3;
+			BiosStall = 30 + count * perIter;
+		}
+		else
+		{
+			int loadCost = 2 + Gba.Memory.WaitstatesNonseq16[srcRegion];
+			int storeCost = 1 + Gba.Memory.WaitstatesNonseq16[dstRegion];
+			int perIter = fill ? (storeCost + 3) : (loadCost + storeCost + 3);
+			BiosStall = 30 + count * perIter;
 		}
 	}
 

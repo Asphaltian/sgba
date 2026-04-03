@@ -135,8 +135,6 @@ public static class GbaSerialize
 
 		w.Write( cpu.Cycles );
 		w.Write( cpu.Halted ); w.Write( cpu.IrqPending );
-		w.Write( cpu.InIntrWait ); w.Write( cpu.InIrqContext );
-		w.Write( cpu.IntrWaitFlags );
 		w.Write( cpu.OpenBusPrefetch );
 	}
 
@@ -182,8 +180,6 @@ public static class GbaSerialize
 
 		cpu.Cycles = r.ReadInt64();
 		cpu.Halted = r.ReadBoolean(); cpu.IrqPending = r.ReadBoolean();
-		cpu.InIntrWait = r.ReadBoolean(); cpu.InIrqContext = r.ReadBoolean();
-		cpu.IntrWaitFlags = r.ReadUInt16();
 		cpu.OpenBusPrefetch = r.ReadUInt32();
 	}
 

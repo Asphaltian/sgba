@@ -22,9 +22,6 @@ public partial class ArmCore
 	public long InstructionStartCycles;
 	public bool Halted;
 	public bool IrqPending;
-	public bool InIntrWait;
-	public bool InIrqContext;
-	public ushort IntrWaitFlags;
 	public uint OpenBusPrefetch;
 
 	public uint[] PcTrace = new uint[128];
@@ -64,8 +61,6 @@ public partial class ArmCore
 		PrivilegeMode = PrivilegeMode.System;
 		Halted = false;
 		IrqPending = false;
-		InIntrWait = false;
-		IntrWaitFlags = 0;
 		_prefetchFlushed = true;
 		Cycles = 0;
 
@@ -124,12 +119,6 @@ public partial class ArmCore
 				IrqPending = false;
 				FlushPipeline();
 				_prefetchFlushed = false;
-			}
-
-			if ( InIntrWait && !Halted && !IrqDisable && !InIrqContext )
-			{
-				Halted = true;
-				return;
 			}
 
 			uint instrAddr = ThumbMode ? Gprs[15] - 4 : Gprs[15] - 8;
@@ -230,8 +219,6 @@ public partial class ArmCore
 		Gprs[15] = GbaConstants.BaseIrq;
 		_prefetchFlushed = true;
 		Halted = false;
-		if ( InIntrWait )
-			InIrqContext = true;
 	}
 
 	public uint GetCpsrRaw()

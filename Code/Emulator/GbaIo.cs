@@ -74,8 +74,6 @@ public class GbaIo
 			Gba.Memory.Store16( 0x03007FF8, biosIF );
 		}
 
-		Gba.CheckIntrWait( irq );
-
 		if ( (IE & IF) != 0 && _irqFireCycle == long.MaxValue )
 		{
 			_irqFireCycle = Gba.Cpu.Cycles - cyclesLate + IrqDelayBase;
@@ -115,9 +113,9 @@ public class GbaIo
 			case SioModeMulti:
 				return SioCyclesPerTransfer[_sioCnt & 3];
 			case SioModeNormal8:
-				return 8 * CpuFreq / (( (_sioCnt & 0x0001) != 0 ? 2048 : 256 ) * 1024);
+				return 8 * CpuFreq / (((_sioCnt & 0x0001) != 0 ? 2048 : 256) * 1024);
 			case SioModeNormal32:
-				return 32 * CpuFreq / (( (_sioCnt & 0x0001) != 0 ? 2048 : 256 ) * 1024);
+				return 32 * CpuFreq / (((_sioCnt & 0x0001) != 0 ? 2048 : 256) * 1024);
 			default:
 				return 0;
 		}
