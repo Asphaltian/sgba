@@ -6,7 +6,7 @@
 
 [Workshop]: https://sbox.game/asphaltian/sgba
 [Discord]: https://discord.gg/rbCJdZjewf
-[Forums]: https://sbox.game/f/gendev/1627
+[Forums]: https://sbox.game/asphaltian/sgba/forum
 [Contributing]: CONTRIBUTING.md
 
 # sGBA
