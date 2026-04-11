@@ -13,11 +13,13 @@
 
 		<div class="lib-header">
 			<div class="lib-header-brand">
-				<div class="lib-logo">sGBA</div>
-				<div class="lib-tagline">Game Boy Advance Library</div>
+				<image src="/ui/logo.png" class="lib-logo" />
 			</div>
 			<div class="lib-header-right">
-				<div class="lib-game-count">@_roms.Count game@(_roms.Count == 1 ? "" : "s")</div>
+				<div class="@SearchBarClass">
+					<div class="lib-search-icon">search</div>
+					<TextEntry @ref="_searchEntry" placeholder="Search games…" OnTextEdited=@OnSearchEdited onfocus=@OnSearchFocused onblur=@OnSearchBlurred class="lib-search-input" />
+				</div>
 			</div>
 		</div>
 
@@ -25,43 +27,52 @@
 
 		<div class="lib-body">
 
-			@if ( _roms.Count == 0 )
+		@if (_roms.Count == 0)
+		{
+			<div class="lib-empty">
+				<div class="lib-empty-icon">sports_esports</div>
+				<div class="lib-empty-title">No ROMs Found</div>
+				<div class="lib-empty-hint">Place .gba files in the steamapps\common\sbox\data\asphaltian\sgba\roms directory</div>
+			</div>
+			}
+			else if (_filteredRoms.Count == 0)
 			{
 				<div class="lib-empty">
-					<div class="lib-empty-icon">sports_esports</div>
-					<div class="lib-empty-title">No ROMs Found</div>
-					<div class="lib-empty-hint">Place .gba files in the steamapps\common\sbox\data\asphaltian\sgba\roms directory</div>
+					<div class="lib-empty-icon">search_off</div>
+					<div class="lib-empty-title">No Results</div>
+					<div class="lib-empty-hint">No games match '@_searchText'</div>
 				</div>
 			}
 			else
 			{
-				<RomGrid @ref="_grid" Items=@_romsAsObjects ItemSize=@(new Vector2( 218, 288 )) OnCellClick=@OnRomCellClick ContentVersion=@_thumbnailVersion>
+				<RomGrid @ref="_grid" Items=@_romsAsObjects ItemSize=@(new Vector2(218, 288)) OnCellClick=@OnRomCellClick
+						 ContentVersion=@_thumbnailVersion>
 					<Item Context="romObj">
-						@{ var rom = (RomEntry)romObj; }
-						@{ _thumbnails.TryGetValue( rom.Path, out Texture thumb ); }
-                        <div class="rom-card">
+						@{
+							var rom = (RomEntry)romObj;
+						}
+						@{
+							_thumbnails.TryGetValue(rom.Path, out Texture thumb);
+						}
+						<div class="rom-card">
 
 							<div class="card-art">
 
-								@if ( thumb != null )
+								@if (thumb != null)
 								{
 									<Image Texture=@thumb class="card-thumb" />
 								}
 
-								@if ( thumb == null )
+								@if (thumb == null)
 								{
 									<div class="card-no-art">
-										<div class="card-no-art-icon">sports_esports</div>
-										@if ( !string.IsNullOrEmpty( rom.GameCode ) )
-										{
-											<div class="card-no-art-code">@rom.GameCode</div>
-										}
+										<div class="card-no-art-icon">question_mark</div>
 									</div>
 								}
 
-								@if ( !string.IsNullOrEmpty( rom.Region ) )
+								@if (!string.IsNullOrEmpty(rom.Region))
 								{
-									<div class="card-region-badge">@FormatRegion( rom.Region )</div>
+									<div class="card-region-badge">@FormatRegion(rom.Region)</div>
 								}
 
 								<div class="card-launch-overlay">
@@ -72,7 +83,7 @@
 
 							<div class="card-info">
 								<div class="card-title">@rom.DisplayTitle</div>
-								@if ( !string.IsNullOrEmpty( rom.Publisher ) )
+								@if (!string.IsNullOrEmpty(rom.Publisher))
 								{
 									<div class="card-publisher">@rom.Publisher</div>
 								}
@@ -93,12 +104,17 @@
 
 	private RomGrid _grid;
 	private List<RomEntry> _roms = new();
+	private List<RomEntry> _filteredRoms = new();
 	private List<object> _romsAsObjects = new();
 	private HashSet<string> _knownPaths = new();
-	private float _pollTimer = 0f;
+	private string _searchText = "";
+	private bool _searchFocused;
+	private bool _headerFocused;
+	private TextEntry _searchEntry;
+	private float _pollTimer;
 	private const float PollInterval = 3f;
 	private Dictionary<string, Texture> _thumbnails = new();
-	private int _thumbnailVersion = 0;
+	private int _thumbnailVersion;
 	private int _hoveredIndex = -1;
 	private bool _isVisible = true;
 
@@ -113,7 +129,7 @@
 	private float _leftHoldTime, _leftNextRepeat;
 	private float _rightHoldTime, _rightNextRepeat;
 
-	private int ColumnCount => _grid?.Columns is > 0 ? _grid.Columns : Math.Max( 1, (int)((Screen.Width - 96f) / (200f + 18f)) );
+	private int ColumnCount => _grid?.Columns is > 0 ? _grid.Columns : Math.Max(1, (int)((Screen.Width - 96f) / (200f + 18f)));
 
 	public bool IsVisible => _isVisible;
 
@@ -121,42 +137,42 @@
 	{
 		Current = this;
 		_roms = RomLibrary.Discover();
-		_romsAsObjects = _roms.Cast<object>().ToList();
 		_knownPaths = RomLibrary.GetRomPaths();
+		RebuildFilteredList();
 		_ = LoadThumbnailsAsync();
 	}
 
 	private async Task LoadThumbnailsAsync()
 	{
-		foreach ( var rom in _roms.ToList() )
+		foreach (var rom in _roms.ToList())
 		{
-			if ( string.IsNullOrEmpty( rom.ThumbnailUrl ) )
+			if (string.IsNullOrEmpty(rom.ThumbnailUrl))
 				continue;
 
-			var cacheKey = string.IsNullOrEmpty( rom.GameCode )
-				? Math.Abs( rom.ThumbnailUrl.GetHashCode() ).ToString()
+			var cacheKey = string.IsNullOrEmpty(rom.GameCode)
+				? Math.Abs(rom.ThumbnailUrl.GetHashCode()).ToString()
 				: rom.GameCode;
 			var cachePath = $"thumbnails/{cacheKey}.png";
 
 			try
 			{
-				if ( !FileSystem.Data.FileExists( cachePath ) )
+				if (!FileSystem.Data.FileExists(cachePath))
 				{
-					var bytes = await Http.RequestBytesAsync( rom.ThumbnailUrl );
-					FileSystem.Data.WriteAllBytes( cachePath, bytes );
+					var bytes = await Http.RequestBytesAsync(rom.ThumbnailUrl);
+					FileSystem.Data.WriteAllBytes(cachePath, bytes);
 				}
 
-				var tex = Texture.LoadFromFileSystem( cachePath, FileSystem.Data );
-				if ( tex != null )
+				var tex = Texture.LoadFromFileSystem(cachePath, FileSystem.Data);
+				if (tex != null)
 				{
 					_thumbnails[rom.Path] = tex;
 					_thumbnailVersion++;
 					StateHasChanged();
 				}
 			}
-			catch ( Exception ex )
+			catch (Exception ex)
 			{
-				Log.Warning( $"[sGBA] Thumbnail failed for {rom.DisplayTitle}: {ex.Message}" );
+				Log.Warning($"[sGBA] Thumbnail failed for {rom.DisplayTitle}: {ex.Message}");
 			}
 		}
 	}
@@ -165,10 +181,11 @@
 	{
 		EmulatorComponent.Current?.Unload();
 		_isVisible = true;
-		SetHovered( -1 );
+		SetHovered(-1);
+		_headerFocused = false;
 		_useGamepad = false;
 		Mouse.Visibility = MouseVisibility.Visible;
-		Sound.Play( "ui.popup.message.open" );
+		Sound.Play("ui.popup.message.open");
 		StateHasChanged();
 	}
 
@@ -179,48 +196,77 @@
 		StateHasChanged();
 	}
 
-	private void OnRomCellClick( int i ) => LaunchRom( _roms[i] );
+	private void OnRomCellClick(int i) => LaunchRom(_filteredRoms[i]);
 
-	private void LaunchRom( RomEntry rom )
+	private void LaunchRom(RomEntry rom)
 	{
 		var emulator = EmulatorComponent.Current;
-		if ( !emulator.IsValid() )
+		if (!emulator.IsValid())
 			return;
 
-		Sound.Play( "ui.button.press" );
+		Sound.Play("ui.button.press");
 		Hide();
-		emulator.Restart( rom.Path );
+		emulator.Restart(rom.Path);
 	}
 
-	private static string FormatRegion( string region )
+	private void OnSearchFocused() => _searchFocused = true;
+	private void OnSearchBlurred() => _searchFocused = false;
+
+	private string SearchBarClass => "lib-search-bar"
+		+ (_searchFocused ? " focused" : "")
+		+ (_headerFocused ? " pad-hover" : "");
+
+	private void RebuildFilteredList()
 	{
-		if ( region.Contains( "World" ) ) return "World";
-		if ( region.Contains( "USA" ) ) return "USA";
-		if ( region.Contains( "Europe" ) ) return "EUR";
-		if ( region.Contains( "Japan" ) ) return "JPN";
-		if ( region.Contains( "Australia" ) ) return "AUS";
+		IEnumerable<RomEntry> result = _roms;
+
+		var q = _searchText.Trim();
+		if (!string.IsNullOrEmpty(q))
+			result = result.Where(r =>
+				r.DisplayTitle.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+				(r.Publisher ?? "").Contains(q, StringComparison.OrdinalIgnoreCase));
+
+		_filteredRoms = result.ToList();
+		_romsAsObjects = _filteredRoms.Cast<object>().ToList();
+		SetHovered(-1);
+	}
+
+	private void OnSearchEdited(string value)
+	{
+		_searchText = value;
+		RebuildFilteredList();
+	}
+
+	private static string FormatRegion(string region)
+	{
+		if (region.Contains("World")) return "World";
+		if (region.Contains("USA")) return "USA";
+		if (region.Contains("Europe")) return "EUR";
+		if (region.Contains("Japan")) return "JPN";
+		if (region.Contains("Australia")) return "AUS";
 		return region.Length > 10 ? region[..8] + ".." : region;
 	}
 
-	private void SetHovered( int index )
+	private void SetHovered(int index)
 	{
 		_hoveredIndex = index;
-		if ( _grid != null ) _grid.HoveredIndex = index;
+		if (_grid != null) _grid.HoveredIndex = index;
 	}
 
 	private void SetGamepadMode()
 	{
 		_useGamepad = true;
-		if ( _grid != null ) _grid.UseMouseHover = false;
+		if (_grid != null) _grid.UseMouseHover = false;
 		Mouse.Visibility = MouseVisibility.Hidden;
 	}
 
 	private void DetectMouseUsage()
 	{
-		if ( Mouse.Delta.Length > 5 )
+		if (Mouse.Delta.Length > 5)
 		{
 			_useGamepad = false;
-			if ( _grid != null ) _grid.UseMouseHover = true;
+			_headerFocused = false;
+			if (_grid != null) _grid.UseMouseHover = true;
 			Mouse.Visibility = MouseVisibility.Visible;
 		}
 	}
@@ -228,47 +274,74 @@
 	protected override void OnUpdate()
 	{
 		_pollTimer += Time.Delta;
-		if ( _pollTimer >= PollInterval )
+		if (_pollTimer >= PollInterval)
 		{
 			_pollTimer = 0f;
 			var current = RomLibrary.GetRomPaths();
-			if ( !current.SetEquals( _knownPaths ) )
+			if (!current.SetEquals(_knownPaths))
 			{
 				_knownPaths = current;
 				_roms = RomLibrary.Discover();
-				_romsAsObjects = _roms.Cast<object>().ToList();
-				SetHovered( -1 );
+				RebuildFilteredList();
 				_ = LoadThumbnailsAsync();
 				StateHasChanged();
 			}
 		}
 
-		if ( !_isVisible || _roms.Count == 0 ) return;
+		if (!_isVisible) return;
 
 		DetectMouseUsage();
 
-		// Sync hovered index from grid when in mouse mode
-		if ( !_useGamepad && _grid != null )
+		if (!_useGamepad && _grid != null)
 			_hoveredIndex = _grid.HoveredIndex;
 
-		ReadStickEdges( out var upEdge, out var downEdge, out var leftEdge, out var rightEdge );
+		if (_searchFocused) return;
 
-		HandleNavRepeat( "GBA_Up", upEdge, _stickUp, ref _upHoldTime, ref _upNextRepeat, () => { SetGamepadMode(); NavigateUp(); } );
-		HandleNavRepeat( "GBA_Down", downEdge, _stickDown, ref _downHoldTime, ref _downNextRepeat, () => { SetGamepadMode(); NavigateDown(); } );
-		HandleNavRepeat( "GBA_Left", leftEdge, _stickLeft, ref _leftHoldTime, ref _leftNextRepeat, () => { SetGamepadMode(); NavigateLeft(); } );
-		HandleNavRepeat( "GBA_Right", rightEdge, _stickRight, ref _rightHoldTime, ref _rightNextRepeat, () => { SetGamepadMode(); NavigateRight(); } );
+		ReadStickEdges(out var upEdge, out var downEdge, out var leftEdge, out var rightEdge);
 
-		if ( Input.Pressed( "GBA_A" ) && _hoveredIndex >= 0 )
+		HandleNavRepeat("GBA_Up", upEdge, _stickUp, ref _upHoldTime, ref _upNextRepeat, () =>
+		{
+			SetGamepadMode(); NavigateUp();
+		});
+		HandleNavRepeat("GBA_Down", downEdge, _stickDown, ref _downHoldTime, ref _downNextRepeat, () =>
+		{
+			SetGamepadMode(); NavigateDown();
+		});
+		HandleNavRepeat("GBA_Left", leftEdge, _stickLeft, ref _leftHoldTime, ref _leftNextRepeat, () =>
+		{
+			SetGamepadMode(); NavigateLeft();
+		});
+		HandleNavRepeat("GBA_Right", rightEdge, _stickRight, ref _rightHoldTime, ref _rightNextRepeat, () =>
+		{
+			SetGamepadMode(); NavigateRight();
+		});
+
+		if (Input.Pressed("GBA_A"))
 		{
 			SetGamepadMode();
-			LaunchRom( _roms[_hoveredIndex] );
+			if (_headerFocused)
+			{
+				_searchEntry?.Focus();
+			}
+			else if (_hoveredIndex >= 0 && _filteredRoms.Count > 0)
+			{
+				LaunchRom(_filteredRoms[_hoveredIndex]);
+			}
+		}
+
+		if (Input.Pressed("GBA_B") && _headerFocused)
+		{
+			SetGamepadMode();
+			_headerFocused = false;
+			if (_filteredRoms.Count > 0) SetHovered(0);
+			Sound.Play("ui.button.over");
 		}
 	}
 
-	private void ReadStickEdges( out bool upEdge, out bool downEdge, out bool leftEdge, out bool rightEdge )
+	private void ReadStickEdges(out bool upEdge, out bool downEdge, out bool leftEdge, out bool rightEdge)
 	{
-		float sx = Input.GetAnalog( InputAnalog.LeftStickX );
-		float sy = Input.GetAnalog( InputAnalog.LeftStickY );
+		float sx = Input.GetAnalog(InputAnalog.LeftStickX);
+		float sy = Input.GetAnalog(InputAnalog.LeftStickY);
 
 		bool up = sy < -StickDeadzone;
 		bool down = sy > StickDeadzone;
@@ -286,19 +359,19 @@
 		_stickRight = right;
 	}
 
-	private void HandleNavRepeat( string action, bool stickEdge, bool stickHeld,
-		ref float holdTime, ref float nextRepeat, Action navigate )
+	private void HandleNavRepeat(string action, bool stickEdge, bool stickHeld,
+		ref float holdTime, ref float nextRepeat, Action navigate)
 	{
-		if ( Input.Pressed( action ) || stickEdge )
+		if (Input.Pressed(action) || stickEdge)
 		{
 			holdTime = 0;
 			nextRepeat = RepeatDelay;
 			navigate();
 		}
-		else if ( Input.Down( action ) || stickHeld )
+		else if (Input.Down(action) || stickHeld)
 		{
 			holdTime += Time.Delta;
-			if ( holdTime >= nextRepeat )
+			if (holdTime >= nextRepeat)
 			{
 				nextRepeat += RepeatRate;
 				navigate();
@@ -312,45 +385,50 @@
 
 	private void NavigateUp()
 	{
-		if ( _hoveredIndex < 0 ) { SetHovered( 0 ); Sound.Play( "ui.button.over" ); return; }
+		if (_headerFocused) return;
+		if (_hoveredIndex < 0) { SetHovered(0); Sound.Play("ui.button.over"); return; }
 		int next = _hoveredIndex - ColumnCount;
-		if ( next >= 0 ) { SetHovered( next ); Sound.Play( "ui.button.over" ); }
+		if (next >= 0) { SetHovered(next); Sound.Play("ui.button.over"); }
+		else { _headerFocused = true; SetHovered(-1); Sound.Play("ui.button.over"); }
 	}
 
 	private void NavigateDown()
 	{
-		if ( _hoveredIndex < 0 ) { SetHovered( 0 ); Sound.Play( "ui.button.over" ); return; }
+		if (_headerFocused) { _headerFocused = false; if (_filteredRoms.Count > 0) SetHovered(0); Sound.Play("ui.button.over"); return; }
+		if (_hoveredIndex < 0) { SetHovered(0); Sound.Play("ui.button.over"); return; }
 		int next = _hoveredIndex + ColumnCount;
-		if ( next < _roms.Count ) { SetHovered( next ); Sound.Play( "ui.button.over" ); }
+		if (next < _filteredRoms.Count) { SetHovered(next); Sound.Play("ui.button.over"); }
 	}
 
 	private void NavigateLeft()
 	{
-		if ( _hoveredIndex < 0 ) { SetHovered( 0 ); Sound.Play( "ui.button.over" ); return; }
-		if ( _hoveredIndex % ColumnCount > 0 ) { SetHovered( _hoveredIndex - 1 ); Sound.Play( "ui.button.over" ); }
+		if (_headerFocused) return;
+		if (_hoveredIndex < 0) { SetHovered(0); Sound.Play("ui.button.over"); return; }
+		if (_hoveredIndex % ColumnCount > 0) { SetHovered(_hoveredIndex - 1); Sound.Play("ui.button.over"); }
 	}
 
 	private void NavigateRight()
 	{
-		if ( _hoveredIndex < 0 ) { SetHovered( 0 ); Sound.Play( "ui.button.over" ); return; }
-		if ( _hoveredIndex % ColumnCount < ColumnCount - 1 && _hoveredIndex + 1 < _roms.Count )
+		if (_headerFocused) return;
+		if (_hoveredIndex < 0) { SetHovered(0); Sound.Play("ui.button.over"); return; }
+		if (_hoveredIndex % ColumnCount < ColumnCount - 1 && _hoveredIndex + 1 < _filteredRoms.Count)
 		{
-			SetHovered( _hoveredIndex + 1 );
-			Sound.Play( "ui.button.over" );
+			SetHovered(_hoveredIndex + 1);
+			Sound.Play("ui.button.over");
 		}
 	}
 
 	protected override int BuildHash()
 	{
-		if ( _isVisible )
-			return HashCode.Combine( _hoveredIndex, _roms.Count, _useGamepad, _thumbnailVersion );
+		if (_isVisible)
+			return HashCode.Combine(_hoveredIndex, _filteredRoms.Count, _useGamepad, _thumbnailVersion, _searchFocused, _headerFocused);
 
-		return HashCode.Combine( _isVisible );
+		return HashCode.Combine(_isVisible);
 	}
 
 	protected override void OnDestroy()
 	{
-		if ( Current == this )
+		if (Current == this)
 			Current = null;
 		_thumbnails.Clear();
 	}

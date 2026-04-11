@@ -5,7 +5,7 @@
   "Ident": "sgba",
   "Schema": 1,
   "IncludeSourceFiles": false,
-  "Resources": null,
+  "Resources": "/ui/*",
   "PackageReferences": [],
   "EditorReferences": null,
   "Mounts": null,

@@ -8,11 +8,10 @@ PauseMenu
 	pointer-events: none;
 	font-family: Poppins;
 	z-index: 2;
-	display: none;
+	display: flex;
 
 	&.visible
 	{
-		display: flex;
 		pointer-events: all;
 
 		.overlay

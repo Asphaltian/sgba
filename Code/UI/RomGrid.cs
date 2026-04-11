@@ -122,7 +122,7 @@ public sealed class RomGrid : Sandbox.UI.Panel
 	private int   _sourceListCount;
 	private bool  _needsRebuild;
 	private bool  _lastCellCreated;
-	private float _targetScrollY = -1f;
+	private float _targetScrollY = float.NaN;
 
 	public int HoveredIndex { get; set; } = -1;
 	public bool UseMouseHover { get; set; } = true;
@@ -177,8 +177,7 @@ public sealed class RomGrid : Sandbox.UI.Panel
 			List<object> mat;
 			if ( _sourceList != null )
 			{
-				mat = new List<object>( _sourceList.Count );
-				foreach ( var x in _sourceList ) mat.Add( x );
+				mat = [.. _sourceList];
 			}
 			else
 			{
@@ -265,20 +264,23 @@ public sealed class RomGrid : Sandbox.UI.Panel
 			float viewH   = _layout.ViewportHeight( Box );
 			float scrollY = ScrollOffset.y;
 
-			if ( cellTop < scrollY )
-				_targetScrollY = cellTop;
-			else if ( cellBottom > scrollY + viewH )
-				_targetScrollY = cellBottom - viewH;
+			float padTop = (Box.RectInner.Top  - Box.Rect.Top)    / ScaleFromScreen;
+			float padBot = (Box.Rect.Bottom - Box.RectInner.Bottom) / ScaleFromScreen;
+
+			if ( cellTop - padTop < scrollY )
+				_targetScrollY = MathF.Max( 0f, cellTop - padTop );
+			else if ( cellBottom + padBot > scrollY + viewH )
+				_targetScrollY = cellBottom + padBot - viewH;
 		}
 
-		if ( _targetScrollY >= 0f )
+		if ( !float.IsNaN( _targetScrollY ) )
 		{
 			float current = ScrollOffset.y;
 			float next    = current + (_targetScrollY - current) * MathF.Min( 1f, Time.Delta * 18f );
 			if ( MathF.Abs( next - _targetScrollY ) < 0.5f )
 			{
 				next           = _targetScrollY;
-				_targetScrollY = -1f;
+				_targetScrollY = float.NaN;
 			}
 			ScrollOffset = new Vector2( ScrollOffset.x, next );
 		}
@@ -314,7 +316,7 @@ public sealed class RomGrid : Sandbox.UI.Panel
 	{
 		if ( i < 0 || i >= _items.Count ) return;
 
-		var  data        = _items[i];
+		var data = _items[i];
 		bool needRebuild = !_cellData.TryGetValue( i, out var last ) || !EqualityComparer<object>.Default.Equals( last, data );
 
 		if ( !_created.TryGetValue( i, out var panel ) || needRebuild )

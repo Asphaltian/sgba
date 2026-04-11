@@ -30,7 +30,7 @@ GameLibraryScreen
 		top: 0;
 		width: 100%;
 		height: 100%;
-		background-color: #0d0d0d;
+		background-color: #0b0d14;
 	}
 
 	.lib-container
@@ -62,40 +62,61 @@ GameLibraryScreen
 
 	.lib-logo
 	{
-		font-size: 36px;
-		font-weight: 700;
-		color: white;
-		letter-spacing: -1px;
-	}
-
-	.lib-tagline
-	{
-		font-size: 13px;
-		font-weight: 400;
-		color: rgba(255, 255, 255, 0.45);
-		letter-spacing: 0.5px;
+		width: 172px;
+		height: 43.5px;
+		background-size: contain;
+		background-repeat: no-repeat;
+		background-position: left center;
 	}
 
 	.lib-header-right
 	{
 		flex-direction: column;
 		align-items: flex-end;
-		gap: 4px;
+		gap: 8px;
 	}
 
-	.lib-game-count
+	.lib-search-bar
 	{
+		flex-direction: row;
+		align-items: center;
+		background-color: rgba(255, 255, 255, 0.05);
+		border-radius: 6px;
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		padding: 0 12px;
+		gap: 8px;
+		width: 280px;
+		transition: border-color 0.15s ease;
+
+		&.focused, &.pad-hover
+		{
+			border-color: rgba(79, 114, 245, 0.5);
+		}
+	}
+
+	.lib-search-icon
+	{
+		font-family: "Material Icons";
+		font-size: 16px;
+		color: rgba(255, 255, 255, 0.3);
+		flex-shrink: 0;
+	}
+
+	.lib-search-input
+	{
+		flex: 1;
 		font-size: 13px;
-		font-weight: 500;
-		color: rgba(255, 255, 255, 0.35);
-		letter-spacing: 0.3px;
+		color: rgba(255, 255, 255, 0.85);
+		background-color: transparent;
+		border: none;
+		padding: 8px 0;
 	}
 
 	.lib-divider
 	{
 		height: 1px;
 		margin: 0 48px;
-		background-color: rgba(255, 255, 255, 0.08);
+		background-color: rgba(79, 114, 245, 0.15);
 		flex-shrink: 0;
 	}
 
@@ -111,7 +132,9 @@ GameLibraryScreen
 	{
 		width: 100%;
 		height: 100%;
-		mask-image: linear-gradient( to bottom, black 0%, white 3%, white 97%, black 100% );
+		padding-top: 20px;
+		padding-bottom: 20px;
+		mask-image: linear-gradient( to bottom, black 0%, white 4%, white 96%, black 100% );
 
 		.cell
 		{
@@ -126,7 +149,8 @@ GameLibraryScreen
 		.cell.hovered .rom-card
 		{
 			transform: scale(1.06);
-			border-color: rgba(255, 255, 255, 0.25);
+			border-color: rgba(79, 114, 245, 0.7);
+			box-shadow: 0 0 18px rgba(79, 114, 245, 0.3);
 		}
 	}
 
@@ -144,7 +168,7 @@ GameLibraryScreen
 	{
 		font-family: "Material Icons";
 		font-size: 64px;
-		color: rgba(255, 255, 255, 0.12);
+		color: rgba(79, 114, 245, 0.2);
 	}
 
 	.lib-empty-title
@@ -175,13 +199,13 @@ GameLibraryScreen
 
 		&:hover
 		{
-			border-color: rgba(0, 136, 255, 0.4);
+			border-color: rgba(79, 114, 245, 0.5);
 			sound-in: ui.button.over;
 		}
 
 		&:active
 		{
-			border-color: rgba(0, 136, 255, 0.2);
+			border-color: rgba(79, 114, 245, 0.3);
 		}
 	}
 
@@ -190,7 +214,7 @@ GameLibraryScreen
 		width: 100%;
 		height: 200px;
 		flex-shrink: 0;
-		background-color: #0a0a0a;
+		background-color: #080a12;
 		align-items: center;
 		justify-content: center;
 		position: relative;
@@ -224,16 +248,8 @@ GameLibraryScreen
 	.card-no-art-icon
 	{
 		font-family: "Material Icons";
-		font-size: 40px;
-		color: rgba(255, 255, 255, 0.1);
-	}
-
-	.card-no-art-code
-	{
-		font-size: 11px;
-		font-weight: 600;
-		color: rgba(255, 255, 255, 0.2);
-		letter-spacing: 2px;
+		font-size: 52px;
+		color: rgba(79, 114, 245, 0.25);
 	}
 
 	.card-region-badge
@@ -302,13 +318,6 @@ GameLibraryScreen
 		color: rgba(255, 255, 255, 0.95);
 	}
 
-	.card-sub-row
-	{
-		flex-direction: row;
-		align-items: center;
-		gap: 6px;
-	}
-
 	.card-publisher
 	{
 		font-size: 10px;
@@ -317,21 +326,5 @@ GameLibraryScreen
 		flex-shrink: 1;
 		overflow: hidden;
 		white-space: nowrap;
-	}
-
-	.card-year
-	{
-		font-size: 10px;
-		font-weight: 500;
-		color: rgba(255, 255, 255, 0.28);
-		flex-shrink: 0;
-	}
-
-	.card-gamecode
-	{
-		font-size: 10px;
-		font-weight: 600;
-		color: rgba(255, 255, 255, 0.25);
-		letter-spacing: 1px;
 	}
 }
