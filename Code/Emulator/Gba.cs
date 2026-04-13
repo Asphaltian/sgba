@@ -17,6 +17,10 @@ public class Gba
 	public int CyclesThisFrame { get; set; }
 	public long FrameCounter { get; set; }
 	public long TotalCycles { get; set; }
+	public ushort KeysActive { get; set; }
+	public ushort KeysLast { get; set; } = 0x400;
+	public bool AllowOpposingDirections { get; set; } = true;
+	public bool HaltPending { get; set; }
 
 	public Gba()
 	{
@@ -53,8 +57,10 @@ public class Gba
 		Memory.InstallHleBios();
 		Cpu.SkipBios();
 
-		Video.DispCnt = 0x0080;
-		Io.PostFlg = 1;
+		Io.ApplySkipBiosState();
+
+		KeysLast = 0x400;
+		HaltPending = false;
 
 		CyclesThisFrame = 0;
 		FrameCounter = 0;
@@ -263,9 +269,9 @@ public class Gba
 	public void SetKeyState( GbaKey key, bool pressed )
 	{
 		if ( pressed )
-			Io.KeyInput &= (ushort)~(int)key;
+			KeysActive |= (ushort)key;
 		else
-			Io.KeyInput |= (ushort)key;
+			KeysActive &= (ushort)~(ushort)key;
 		Io.TestKeypadIrq();
 	}
 }

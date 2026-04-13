@@ -30,6 +30,29 @@ public class GbaMemory
 	public bool Debug;
 	public byte[] DebugString = new byte[0x100];
 	public ushort DebugFlags;
+	public uint AgbPrintBase;
+	public ushort AgbPrintProtect;
+	public ushort AgbPrintRequest;
+	public ushort AgbPrintBank;
+	public ushort AgbPrintGet;
+	public ushort AgbPrintPut;
+	public byte[] AgbPrintBuffer = new byte[0x10000];
+	private byte[] _agbPrintBufferBackup = [];
+	private bool _agbPrintHasBackup;
+	private ushort _agbPrintProtectBackup;
+	private ushort _agbPrintRequestBackup;
+	private ushort _agbPrintBankBackup;
+	private ushort _agbPrintGetBackup;
+	private ushort _agbPrintPutBackup;
+	private uint _agbPrintFuncBackup;
+	private bool _agbPrintInitialized;
+
+	private const uint AgbPrintBufferBase = 0x00FD0000;
+	private const uint AgbPrintTop = 0x00FE0000;
+	private const uint AgbPrintProtectAddress = 0x00FE2FFE;
+	private const uint AgbPrintStructAddress = 0x00FE20F8;
+	private const uint AgbPrintFlushAddress = 0x00FE209C;
+	private const uint AgbPrintFlushFunction = 0x4770DFFA;
 
 	public GbaMemory( Gba gba )
 	{
@@ -57,10 +80,59 @@ public class GbaMemory
 		Array.Clear( Sram );
 		Array.Clear( Io );
 		BiosPrefetch = 0;
+		LastPrefetchedPc = 0;
 		Debug = false;
 		Array.Clear( DebugString );
 		DebugFlags = 0;
+		ClearAgbPrint();
 		InitDefaultWaitstates();
+	}
+
+	public void ClearAgbPrint()
+	{
+		if ( _agbPrintHasBackup )
+			ApplyAgbPrintRomWindow( false );
+
+		AgbPrintBase = 0;
+		AgbPrintProtect = 0;
+		AgbPrintRequest = 0;
+		AgbPrintBank = 0;
+		AgbPrintGet = 0;
+		AgbPrintPut = 0;
+		_agbPrintHasBackup = false;
+		_agbPrintProtectBackup = 0;
+		_agbPrintRequestBackup = 0;
+		_agbPrintBankBackup = 0;
+		_agbPrintGetBackup = 0;
+		_agbPrintPutBackup = 0;
+		_agbPrintFuncBackup = 0;
+		_agbPrintInitialized = false;
+		Array.Clear( AgbPrintBuffer );
+		_agbPrintBufferBackup = [];
+	}
+
+	public void FlushAgbPrint()
+	{
+		if ( !_agbPrintInitialized )
+			return;
+
+		byte[] message = new byte[0x100];
+		int length = 0;
+
+		while ( AgbPrintGet != AgbPrintPut && length < message.Length )
+		{
+			message[length++] = AgbPrintBuffer[AgbPrintGet & 0xFFFF];
+			AgbPrintGet++;
+		}
+
+		StoreAgbPrintHalf( (AgbPrintStructAddress + 4) | AgbPrintBase, AgbPrintGet );
+
+		int terminator = Array.IndexOf( message, (byte)0, 0, length );
+		if ( terminator < 0 )
+			terminator = length;
+
+		string text = System.Text.Encoding.ASCII.GetString( message, 0, terminator );
+		GbaLog.Write( LogCategory.GBADebug, LogLevel.Info, text );
 	}
 
 	private void InitDefaultWaitstates()
@@ -144,6 +216,9 @@ public class GbaMemory
 		WaitstatesSeq16[14] = WaitstatesSeq16[15] = sramWait;
 		WaitstatesNonseq32[14] = WaitstatesNonseq32[15] = sramWait + 1 + sramWait;
 		WaitstatesSeq32[14] = WaitstatesSeq32[15] = sramWait + 1 + sramWait;
+
+		if ( _agbPrintHasBackup )
+			ApplyAgbPrintRomWindow( ((waitcnt >> 11) & 3) == 3 );
 	}
 
 	public void LoadRom( byte[] romData )
@@ -176,13 +251,11 @@ public class GbaMemory
 						BiosPrefetch = ReadWordFromArray( Bios, addr & ~3u );
 						return Bios[addr];
 					}
-					if ( GbaLog.FilterTest( LogCategory.GBAMem, LogLevel.GameError ) )
-						GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, $"Bad BIOS Load8: 0x{address:X8}" );
+					GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, "Bad BIOS Load8: 0x{0:X8}", address );
 					return (byte)(BiosPrefetch >> (int)((address & 3) * 8));
 				}
-				return Gba.Bios.HleActive
-					? (byte)0
-					: (byte)(Gba.Cpu.OpenBusPrefetch >> (int)((address & 3) * 8));
+				GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, "Bad memory Load8: 0x{0:X8}", address );
+				return (byte)(Gba.Cpu.LoadBadValue() >> (int)((address & 3) * 8));
 
 			case 0x2: return Wram[address & 0x3FFFF];
 			case 0x3: return Iwram[address & 0x7FFF];
@@ -192,7 +265,10 @@ public class GbaMemory
 				{
 					uint rawAddr = address & 0x1FFFF;
 					if ( (rawAddr & 0x1C000) == 0x18000 && (Gba.Video.DispCnt & 7) >= 3 )
+					{
+						GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, "Bad VRAM Load8: 0x{0:X8}", address );
 						return 0;
+					}
 					return Vram[MapVramAddress( address )];
 				}
 			case 0x7: return Oam[address & 0x3FF];
@@ -202,20 +278,29 @@ public class GbaMemory
 			case 0xA:
 			case 0xB:
 			case 0xC:
+				{
+					uint romOffset = address & 0x1FFFFFF;
+					if ( romOffset < (uint)Rom.Length )
+						return Rom[romOffset];
+					GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, "Out of bounds ROM Load8: 0x{0:X8}", address );
+					return (byte)(romOffset >> 1 >> ((int)(address & 1) * 8));
+				}
 			case 0xD:
-				uint romAddr = address & 0x1FFFFFF;
-				if ( romAddr < (uint)Rom.Length )
-					return Rom[romAddr];
-				return (byte)(romAddr >> 1 >> ((int)(address & 1) * 8));
+				{
+					uint romAddr = address & 0x1FFFFFF;
+					if ( romAddr < (uint)Rom.Length )
+						return Rom[romAddr];
+					GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, "Out of bounds ROM Load8: 0x{0:X8}", address );
+					return (byte)(romAddr >> 1 >> ((int)(address & 1) * 8));
+				}
 
 			case 0xE:
 			case 0xF:
 				return Gba.Savedata.Read8( address );
 
 			default:
-				if ( GbaLog.FilterTest( LogCategory.GBAMem, LogLevel.GameError ) )
-					GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, $"Bad memory Load8: 0x{address:X8}" );
-				return (byte)(Gba.Cpu.OpenBusPrefetch >> (int)((address & 3) * 8));
+				GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, "Bad memory Load8: 0x{0:X8}", address );
+				return (byte)(Gba.Cpu.LoadBadValue() >> (int)((address & 3) * 8));
 		}
 	}
 
@@ -241,13 +326,11 @@ public class GbaMemory
 						BiosPrefetch = ReadWordFromArray( Bios, addr & ~3u );
 						return ReadHalfFromArray( Bios, addr );
 					}
-					if ( GbaLog.FilterTest( LogCategory.GBAMem, LogLevel.GameError ) )
-						GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, $"Bad BIOS Load16: 0x{address:X8}" );
+					GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, "Bad BIOS Load16: 0x{0:X8}", address );
 					return (ushort)(BiosPrefetch >> (int)((address & 2) * 8));
 				}
-				return Gba.Bios.HleActive
-					? (ushort)0
-					: (ushort)(Gba.Cpu.OpenBusPrefetch >> (int)((address & 2) * 8));
+				GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, "Bad memory Load16: 0x{0:X8}", address );
+				return (ushort)(Gba.Cpu.LoadBadValue() >> (int)((address & 2) * 8));
 
 			case 0x2: return ReadHalfFromArray( Wram, address & 0x3FFFF );
 			case 0x3: return ReadHalfFromArray( Iwram, address & 0x7FFF );
@@ -257,7 +340,10 @@ public class GbaMemory
 				{
 					uint rawAddr = address & 0x1FFFF;
 					if ( (rawAddr & 0x1C000) == 0x18000 && (Gba.Video.DispCnt & 7) >= 3 )
+					{
+						GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, "Bad VRAM Load16: 0x{0:X8}", address );
 						return 0;
+					}
 					return ReadHalfFromArray( Vram, MapVramAddress( address ) );
 				}
 			case 0x7: return ReadHalfFromArray( Oam, address & 0x3FF );
@@ -268,29 +354,31 @@ public class GbaMemory
 			case 0xB:
 			case 0xC:
 				{
-					uint romAddr = address & 0x1FFFFFF;
-					if ( Gba.Hardware.HasRtc && romAddr >= 0xC4 && romAddr <= 0xC8 && (romAddr & 1) == 0 )
-						return Gba.Hardware.GpioRead( romAddr );
-					if ( romAddr < (uint)Rom.Length - 1 )
-						return ReadHalfFromArray( Rom, romAddr );
-					return (ushort)(romAddr >> 1);
+					uint romOffset = address & 0x1FFFFFF;
+					if ( romOffset + 1 < (uint)Rom.Length )
+						return ReadHalfFromArray( Rom, romOffset );
+
+					uint romAddress = address & 0x01FFFFFF;
+					if ( TryReadAgbPrintHalf( romAddress, out ushort agbPrintValue ) )
+						return agbPrintValue;
+
+					GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, "Out of bounds ROM Load16: 0x{0:X8}", address );
+					return (ushort)(romOffset >> 1);
 				}
 			case 0xD:
 				{
 					if ( Gba.Savedata.Type == SavedataType.Eeprom )
 						return Gba.Savedata.ReadEEPROM();
-					uint romAddr = address & 0x1FFFFFF;
-					if ( romAddr < (uint)Rom.Length - 1 )
-						return ReadHalfFromArray( Rom, romAddr );
-					if ( GbaLog.FilterTest( LogCategory.GBAMem, LogLevel.GameError ) )
-						GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, $"Out of bounds ROM Load16: 0x{address:X8}" );
-					return (ushort)(romAddr >> 1);
+					uint romOffset = address & 0x1FFFFFF;
+					if ( romOffset + 1 < (uint)Rom.Length )
+						return ReadHalfFromArray( Rom, romOffset );
+					GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, "Out of bounds ROM Load16: 0x{0:X8}", address );
+					return (ushort)(romOffset >> 1);
 				}
 
 			default:
-				if ( GbaLog.FilterTest( LogCategory.GBAMem, LogLevel.GameError ) )
-					GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, $"Bad memory Load16: 0x{address:X8}" );
-				return (ushort)(Gba.Cpu.OpenBusPrefetch >> (int)((address & 2) * 8));
+				GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, "Bad memory Load16: 0x{0:X8}", address );
+				return (ushort)(Gba.Cpu.LoadBadValue() >> (int)((address & 2) * 8));
 		}
 	}
 
@@ -316,11 +404,11 @@ public class GbaMemory
 						BiosPrefetch = ReadWordFromArray( Bios, addr );
 						return BiosPrefetch;
 					}
-					if ( GbaLog.FilterTest( LogCategory.GBAMem, LogLevel.GameError ) )
-						GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, $"Bad BIOS Load32: 0x{address:X8}" );
+					GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, "Bad BIOS Load32: 0x{0:X8}", address );
 					return BiosPrefetch;
 				}
-				return Gba.Bios.HleActive ? 0u : Gba.Cpu.OpenBusPrefetch;
+				GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, "Bad memory Load32: 0x{0:X8}", address );
+				return Gba.Cpu.LoadBadValue();
 
 			case 0x2: return ReadWordFromArray( Wram, address & 0x3FFFF );
 			case 0x3: return ReadWordFromArray( Iwram, address & 0x7FFF );
@@ -330,7 +418,10 @@ public class GbaMemory
 				{
 					uint rawAddr = address & 0x1FFFF;
 					if ( (rawAddr & 0x1C000) == 0x18000 && (Gba.Video.DispCnt & 7) >= 3 )
+					{
+						GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, "Bad VRAM Load32: 0x{0:X8}", address );
 						return 0;
+					}
 					return ReadWordFromArray( Vram, MapVramAddress( address ) );
 				}
 			case 0x7: return ReadWordFromArray( Oam, address & 0x3FF );
@@ -340,18 +431,25 @@ public class GbaMemory
 			case 0xA:
 			case 0xB:
 			case 0xC:
+				{
+					uint romOffset = address & 0x1FFFFFF;
+					if ( romOffset + 3 < (uint)Rom.Length )
+						return ReadWordFromArray( Rom, romOffset );
+					GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, "Out of bounds ROM Load32: 0x{0:X8}", address );
+					return (romOffset >> 1) & 0xFFFF | ((romOffset >> 1) + 1) << 16;
+				}
 			case 0xD:
-				uint romAddr = address & 0x1FFFFFF;
-				if ( romAddr < (uint)Rom.Length - 3 )
-					return ReadWordFromArray( Rom, romAddr );
-				if ( GbaLog.FilterTest( LogCategory.GBAMem, LogLevel.GameError ) )
-					GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, $"Out of bounds ROM Load32: 0x{address:X8}" );
-				return (romAddr >> 1) & 0xFFFF | ((romAddr >> 1) + 1) << 16;
+				{
+					uint romOffset = address & 0x1FFFFFF;
+					if ( romOffset + 3 < (uint)Rom.Length )
+						return ReadWordFromArray( Rom, romOffset );
+					GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, "Out of bounds ROM Load32: 0x{0:X8}", address );
+					return (romOffset >> 1) & 0xFFFF | ((romOffset >> 1) + 1) << 16;
+				}
 
 			default:
-				if ( GbaLog.FilterTest( LogCategory.GBAMem, LogLevel.GameError ) )
-					GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, $"Bad memory Load32: 0x{address:X8}" );
-				return Gba.Cpu.OpenBusPrefetch;
+				GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, "Bad memory Load32: 0x{0:X8}", address );
+				return Gba.Cpu.LoadBadValue();
 		}
 	}
 
@@ -374,13 +472,28 @@ public class GbaMemory
 				{
 					uint objThreshold = (uint)((Gba.Video.DispCnt & 7) >= 3 ? 0x14000 : 0x10000);
 					if ( (address & 0x1FFFF) >= objThreshold )
+					{
+						GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, "Cannot Store8 to OBJ: 0x{0:X8}", address );
 						break;
+					}
 					uint addr = address & 0x1FFFE;
 					Vram[addr] = value;
 					Vram[addr + 1] = value;
 				}
 				break;
-			case 0x7: break;
+			case 0x7:
+				GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, "Cannot Store8 to OAM: 0x{0:X8}", address );
+				break;
+			case 0x8:
+				GbaLog.Write( LogCategory.GBAMem, LogLevel.Stub, "Unimplemented memory Store8: 0x{0:X8}", address );
+				break;
+			case 0x9:
+			case 0xA:
+			case 0xB:
+			case 0xC:
+			case 0xD:
+				GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, "Bad memory Store8: 0x{0:X8}", address );
+				break;
 			case 0xE:
 			case 0xF:
 				Gba.Savedata.Write8( address, value );
@@ -409,7 +522,10 @@ public class GbaMemory
 				{
 					uint rawAddr = address & 0x1FFFF;
 					if ( (rawAddr & 0x1C000) == 0x18000 && (Gba.Video.DispCnt & 7) >= 3 )
+					{
+						GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, "Bad VRAM Store16: 0x{0:X8}", address );
 						break;
+					}
 					WriteHalfToArray( Vram, MapVramAddress( address ), value );
 				}
 				break;
@@ -417,14 +533,33 @@ public class GbaMemory
 			case 0x8:
 			case 0x9:
 				{
-					uint romAddr = address & 0x1FFFFFF;
-					if ( Gba.Hardware.HasRtc && romAddr >= 0xC4 && romAddr <= 0xC8 && (romAddr & 1) == 0 )
-						Gba.Hardware.GpioWrite( romAddr, value );
+					uint romOffset = address & 0x1FFFFFF;
+					if ( region == 0x8 && romOffset >= 0xC4 && romOffset <= 0xC8 && (romOffset & 1) == 0 )
+					{
+						if ( Gba.Hardware.HasRtc )
+							Gba.Hardware.GpioWrite( romOffset, value );
+						else
+							GbaLog.Write( LogCategory.GBAHardware, LogLevel.Warn, "Write to GPIO address {0:X8} on cartridge without GPIO", address );
+						break;
+					}
+
+					uint romAddress = address & 0x01FFFFFF;
+					if ( TryWriteAgbPrintHalf( romAddress, value ) )
+						break;
+
+					GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, "Bad cartridge Store16: 0x{0:X8}", address );
 					break;
 				}
+			case 0xA:
+			case 0xB:
+			case 0xC:
+				GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, "Bad memory Store16: 0x{0:X8}", address );
+				break;
 			case 0xD:
 				if ( Gba.Savedata.Type == SavedataType.Eeprom )
 					Gba.Savedata.WriteEEPROM( value, 1 );
+				else
+					GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, "Bad memory Store16: 0x{0:X8}", address );
 				break;
 		}
 	}
@@ -449,11 +584,22 @@ public class GbaMemory
 				{
 					uint rawAddr = address & 0x1FFFF;
 					if ( (rawAddr & 0x1C000) == 0x18000 && (Gba.Video.DispCnt & 7) >= 3 )
+					{
+						GbaLog.Write( LogCategory.GBAMem, LogLevel.GameError, "Bad VRAM Store32: 0x{0:X8}", address );
 						break;
+					}
 					WriteWordToArray( Vram, MapVramAddress( address ), value );
 				}
 				break;
 			case 0x7: WriteWordToArray( Oam, address & 0x3FF, value ); Gba.Video._oamDirty = true; break;
+			case 0x8:
+			case 0x9:
+			case 0xA:
+			case 0xB:
+			case 0xC:
+			case 0xD:
+				GbaLog.Write( LogCategory.GBAMem, LogLevel.Stub, "Unimplemented memory Store32: 0x{0:X8}", address );
+				break;
 		}
 	}
 
@@ -575,6 +721,150 @@ public class GbaMemory
 		if ( offset >= 0x400 ) return;
 		Gba.Io.Write16( offset, (ushort)value );
 		Gba.Io.Write16( offset + 2, (ushort)(value >> 16) );
+	}
+
+	private bool TryReadAgbPrintHalf( uint romAddress, out ushort value )
+	{
+		uint lowAddress = romAddress & 0x00FFFFFF;
+		lowAddress &= ~1u;
+
+		if ( lowAddress == AgbPrintProtectAddress )
+		{
+			value = AgbPrintProtect;
+			return true;
+		}
+
+		if ( lowAddress >= AgbPrintBufferBase && lowAddress < AgbPrintTop )
+		{
+			value = _agbPrintInitialized
+				? ReadHalfFromArray( AgbPrintBuffer, lowAddress & 0xFFFE )
+				: (ushort)(lowAddress >> 1);
+			return true;
+		}
+
+		if ( (lowAddress & 0x00FFFFF8) == AgbPrintStructAddress )
+		{
+			value = ReadAgbPrintContextHalf( lowAddress );
+			return true;
+		}
+
+		value = 0;
+		return false;
+	}
+
+	private bool TryWriteAgbPrintHalf( uint romAddress, ushort value )
+	{
+		uint lowAddress = romAddress & 0x00FFFFFF;
+
+		if ( lowAddress == AgbPrintProtectAddress )
+		{
+			AgbPrintProtect = value;
+
+			if ( !_agbPrintInitialized )
+			{
+				AgbPrintBase = 0;
+				if ( Rom.Length >= 0x01000000 )
+				{
+					if ( Rom.Length == 0x02000000 )
+						AgbPrintBase = romAddress & 0x01000000;
+
+					_agbPrintBufferBackup = new byte[AgbPrintBuffer.Length];
+					Array.Copy( Rom, (int)(AgbPrintTop | AgbPrintBase), _agbPrintBufferBackup, 0, AgbPrintBuffer.Length );
+					_agbPrintProtectBackup = ReadHalfFromArray( Rom, AgbPrintProtectAddress | AgbPrintBase );
+					_agbPrintRequestBackup = ReadHalfFromArray( Rom, AgbPrintStructAddress | AgbPrintBase );
+					_agbPrintBankBackup = ReadHalfFromArray( Rom, (AgbPrintStructAddress | AgbPrintBase) + 2 );
+					_agbPrintGetBackup = ReadHalfFromArray( Rom, (AgbPrintStructAddress | AgbPrintBase) + 4 );
+					_agbPrintPutBackup = ReadHalfFromArray( Rom, (AgbPrintStructAddress | AgbPrintBase) + 6 );
+					_agbPrintFuncBackup = ReadWordFromArray( Rom, AgbPrintFlushAddress | AgbPrintBase );
+					_agbPrintHasBackup = true;
+				}
+
+				_agbPrintInitialized = true;
+			}
+
+			if ( value == 0x20 )
+				StoreAgbPrintHalf( romAddress, value );
+			return true;
+		}
+
+		if ( AgbPrintProtect != 0x20 )
+			return false;
+
+		if ( (lowAddress >= AgbPrintBufferBase && lowAddress < AgbPrintTop) || (lowAddress & 0x00FFFFF8) == AgbPrintStructAddress )
+		{
+			StoreAgbPrintHalf( romAddress, value );
+			return true;
+		}
+
+		return false;
+	}
+
+	private void StoreAgbPrintHalf( uint romAddress, ushort value )
+	{
+		uint lowAddress = romAddress & 0x00FFFFFF;
+
+		if ( lowAddress >= AgbPrintBufferBase && lowAddress < AgbPrintTop )
+			WriteHalfToArray( AgbPrintBuffer, lowAddress & 0xFFFE, value );
+		else if ( (lowAddress & 0x00FFFFF8) == AgbPrintStructAddress )
+			WriteAgbPrintContextHalf( lowAddress, value );
+
+		if ( Rom.Length == 0x02000000 )
+			WriteHalfToArray( Rom, romAddress & 0x01FFFFFE, value );
+		else if ( AgbPrintBank == 0xFD && Rom.Length >= 0x01000000 )
+			WriteHalfToArray( Rom, romAddress & 0x00FFFFFE, value );
+	}
+
+	private void ApplyAgbPrintRomWindow( bool activeState )
+	{
+		int baseOffset = (int)(AgbPrintTop | AgbPrintBase);
+		Array.Copy( activeState ? AgbPrintBuffer : _agbPrintBufferBackup, 0, Rom, baseOffset, AgbPrintBuffer.Length );
+
+		if ( activeState )
+		{
+			WriteHalfToArray( Rom, AgbPrintProtectAddress | AgbPrintBase, AgbPrintProtect );
+			WriteHalfToArray( Rom, AgbPrintStructAddress | AgbPrintBase, AgbPrintRequest );
+			WriteHalfToArray( Rom, (AgbPrintStructAddress | AgbPrintBase) + 2, AgbPrintBank );
+			WriteHalfToArray( Rom, (AgbPrintStructAddress | AgbPrintBase) + 4, AgbPrintGet );
+			WriteHalfToArray( Rom, (AgbPrintStructAddress | AgbPrintBase) + 6, AgbPrintPut );
+			WriteWordToArray( Rom, AgbPrintFlushAddress | AgbPrintBase, AgbPrintFlushFunction );
+		}
+		else
+		{
+			WriteHalfToArray( Rom, AgbPrintProtectAddress | AgbPrintBase, _agbPrintProtectBackup );
+			WriteHalfToArray( Rom, AgbPrintStructAddress | AgbPrintBase, _agbPrintRequestBackup );
+			WriteHalfToArray( Rom, (AgbPrintStructAddress | AgbPrintBase) + 2, _agbPrintBankBackup );
+			WriteHalfToArray( Rom, (AgbPrintStructAddress | AgbPrintBase) + 4, _agbPrintGetBackup );
+			WriteHalfToArray( Rom, (AgbPrintStructAddress | AgbPrintBase) + 6, _agbPrintPutBackup );
+			WriteWordToArray( Rom, AgbPrintFlushAddress | AgbPrintBase, _agbPrintFuncBackup );
+		}
+	}
+
+	private ushort ReadAgbPrintContextHalf( uint romAddress ) => (romAddress & 6) switch
+	{
+		0 => AgbPrintRequest,
+		2 => AgbPrintBank,
+		4 => AgbPrintGet,
+		6 => AgbPrintPut,
+		_ => 0
+	};
+
+	private void WriteAgbPrintContextHalf( uint romAddress, ushort value )
+	{
+		switch ( romAddress & 6 )
+		{
+			case 0:
+				AgbPrintRequest = value;
+				break;
+			case 2:
+				AgbPrintBank = value;
+				break;
+			case 4:
+				AgbPrintGet = value;
+				break;
+			case 6:
+				AgbPrintPut = value;
+				break;
+		}
 	}
 
 	private void HandleDebugFlags( ushort flags )

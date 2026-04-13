@@ -10,11 +10,9 @@ public class GbaIo
 	public ushort IF;
 	public ushort IME;
 	public ushort WaitCnt;
-	public ushort KeyInput = 0x3FF;
 	public ushort KeyCnt;
 	public ushort Rcnt = 0x8000;
 	public byte PostFlg;
-	public bool HaltPending;
 
 	private const int IrqDelayBase = 7;
 	private long _irqFireCycle = long.MaxValue;
@@ -26,7 +24,6 @@ public class GbaIo
 	private readonly ushort[] _sioRegs = new ushort[30];
 	private int _sioMode = SioModeGpio;
 	private long _sioCompletionCycle = long.MaxValue;
-	private ushort _keysLast = 0x400;
 
 	private const int SioModeNormal8 = 0;
 	private const int SioModeNormal32 = 1;
@@ -50,18 +47,42 @@ public class GbaIo
 		IF = 0;
 		IME = 0;
 		WaitCnt = 0;
-		KeyInput = 0x3FF;
 		KeyCnt = 0;
 		Rcnt = 0x8000;
 		_sioCnt = 0;
 		Array.Clear( _sioRegs );
 		_sioMode = SioModeGpio;
 		_sioCompletionCycle = long.MaxValue;
-		_keysLast = 0x400;
 		PostFlg = 0;
-		HaltPending = false;
 		_irqFireCycle = long.MaxValue;
 		_irqRearmDelay = 0;
+		InitializeRegisters();
+	}
+
+	private void InitializeRegisters()
+	{
+		ushort[] io = Gba.Memory.Io;
+		Array.Clear( io );
+		io[0x000 >> 1] = 0x0080;
+		Gba.Video.DispCnt = 0x0080;
+		io[0x134 >> 1] = 0x8000;
+		io[0x130 >> 1] = 0x03FF;
+		io[0x088 >> 1] = 0x0200;
+		io[0x020 >> 1] = 0x0100;
+		io[0x026 >> 1] = 0x0100;
+		io[0x030 >> 1] = 0x0100;
+		io[0x036 >> 1] = 0x0100;
+		io[0x300 >> 1] = PostFlg;
+	}
+
+	public void ApplySkipBiosState()
+	{
+		PostFlg = 1;
+		Gba.Video.VCount = 0x7E;
+
+		ushort[] io = Gba.Memory.Io;
+		io[0x006 >> 1] = 0x007E;
+		io[0x300 >> 1] = PostFlg;
 	}
 
 	public void RaiseIrq( GbaIrq irq, int cyclesLate = 0 )
@@ -173,38 +194,60 @@ public class GbaIo
 
 	public void TestKeypadIrq()
 	{
-		if ( (KeyCnt & 0x4000) == 0 ) return;
+		ushort keysLast = Gba.KeysLast;
+		ushort keysActive = Gba.KeysActive;
 
-		ushort keysLast = _keysLast;
-		ushort pressed = (ushort)(~KeyInput & 0x3FF);
-		ushort mask = (ushort)(KeyCnt & 0x3FF);
-		bool isAnd = (KeyCnt & 0x8000) != 0;
+		ushort keyCnt = KeyCnt;
+		if ( (keyCnt & 0x4000) == 0 )
+			return;
 
-		_keysLast = pressed;
+		Gba.KeysLast = keysActive;
+		bool isAnd = (keyCnt & 0x8000) != 0;
+		keyCnt &= 0x03FF;
 
-		if ( isAnd )
+		if ( isAnd && keyCnt == (keysActive & keyCnt) )
 		{
-			if ( (pressed & mask) == mask )
-			{
-				if ( keysLast == pressed ) return;
-				RaiseIrq( GbaIrq.Keypad );
-			}
-			else
-			{
-				_keysLast = 0x400;
-			}
+			if ( keysLast == keysActive )
+				return;
+			RaiseIrq( GbaIrq.Keypad );
+		}
+		else if ( !isAnd && (keysActive & keyCnt) != 0 )
+		{
+			RaiseIrq( GbaIrq.Keypad );
 		}
 		else
 		{
-			if ( (pressed & mask) != 0 )
-			{
-				RaiseIrq( GbaIrq.Keypad );
-			}
-			else
-			{
-				_keysLast = 0x400;
-			}
+			Gba.KeysLast = 0x400;
 		}
+	}
+
+	private static bool IsReadConstantRegister( uint offset ) => offset switch
+	{
+		0x008 or 0x00A or 0x00C or 0x00E or
+		0x048 or 0x04A or 0x050 or 0x052 or
+		0x060 or 0x062 or 0x064 or 0x068 or 0x06C or 0x070 or 0x072 or 0x074 or 0x078 or 0x07C or 0x080 or 0x082 or
+		0x102 or 0x106 or 0x10A or 0x10E or
+		0x130 or 0x132 or 0x200 => true,
+		_ => false
+	};
+
+	private ushort ReadKeyInputRegister()
+	{
+		ushort keysActive = Gba.KeysActive;
+		if ( !Gba.AllowOpposingDirections )
+		{
+			ushort leftRight = (ushort)(keysActive & 0x0030);
+			ushort upDown = (ushort)(keysActive & 0x00C0);
+			keysActive &= 0x030F;
+			if ( leftRight != 0x0030 )
+				keysActive |= leftRight;
+			if ( upDown != 0x00C0 )
+				keysActive |= upDown;
+		}
+
+		ushort keyInput = (ushort)(0x03FF ^ keysActive);
+		Gba.Memory.Io[0x130 >> 1] = keyInput;
+		return keyInput;
 	}
 
 	private void SwitchSioMode()
@@ -346,8 +389,23 @@ public class GbaIo
 		_sioRegs[index] = value;
 	}
 
+	private ushort ReadWriteOnlyRegister( uint offset )
+	{
+		GbaLog.Write( LogCategory.GBAIO, LogLevel.GameError, "Read from write-only I/O register: {0:X3}", offset );
+		return (ushort)Gba.Cpu.LoadBadValue();
+	}
+
+	private ushort ReadUnusedRegister( uint offset )
+	{
+		GbaLog.Write( LogCategory.GBAIO, LogLevel.GameError, "Read from unused I/O register: {0:X3}", offset );
+		return (ushort)Gba.Cpu.LoadBadValue();
+	}
+
 	public ushort Read16( uint offset )
 	{
+		if ( !IsReadConstantRegister( offset ) )
+			Gba.HaltPending = false;
+
 		switch ( offset )
 		{
 			case 0x000: return Gba.Video.DispCnt;
@@ -358,6 +416,38 @@ public class GbaIo
 			case 0x00A: return (ushort)(Gba.Video.BgCnt[1] & 0xDFFF);
 			case 0x00C: return Gba.Video.BgCnt[2];
 			case 0x00E: return Gba.Video.BgCnt[3];
+
+			case 0x010:
+			case 0x012:
+			case 0x014:
+			case 0x016:
+			case 0x018:
+			case 0x01A:
+			case 0x01C:
+			case 0x01E:
+			case 0x020:
+			case 0x022:
+			case 0x024:
+			case 0x026:
+			case 0x028:
+			case 0x02A:
+			case 0x02C:
+			case 0x02E:
+			case 0x030:
+			case 0x032:
+			case 0x034:
+			case 0x036:
+			case 0x038:
+			case 0x03A:
+			case 0x03C:
+			case 0x03E:
+			case 0x040:
+			case 0x042:
+			case 0x044:
+			case 0x046:
+			case 0x04C:
+			case 0x054:
+				return ReadWriteOnlyRegister( offset );
 
 			case 0x048: return Gba.Video.WinIn;
 			case 0x04A: return Gba.Video.WinOut;
@@ -407,6 +497,28 @@ public class GbaIo
 					return (ushort)(Gba.Audio.WaveRam[waveOff] | (Gba.Audio.WaveRam[waveOff + 1] << 8));
 				}
 
+			case 0x0A0:
+			case 0x0A2:
+			case 0x0A4:
+			case 0x0A6:
+			case 0x0B0:
+			case 0x0B2:
+			case 0x0B4:
+			case 0x0B6:
+			case 0x0BC:
+			case 0x0BE:
+			case 0x0C0:
+			case 0x0C2:
+			case 0x0C8:
+			case 0x0CA:
+			case 0x0CC:
+			case 0x0CE:
+			case 0x0D4:
+			case 0x0D6:
+			case 0x0D8:
+			case 0x0DA:
+				return ReadWriteOnlyRegister( offset );
+
 			case 0x0B8: return 0;
 			case 0x0BA: return (ushort)(Gba.Dma.Channels[0].Reg & 0xF7E0);
 			case 0x0C4: return 0;
@@ -437,7 +549,7 @@ public class GbaIo
 			case 0x12E:
 				return 0;
 			case 0x130:
-				return KeyInput;
+				return ReadKeyInputRegister();
 			case 0x132: return KeyCnt;
 			case 0x134:
 				return Rcnt;
@@ -472,35 +584,42 @@ public class GbaIo
 			case 0x302: return 0;
 
 			default:
-				if ( GbaLog.FilterTest( LogCategory.GBAIO, LogLevel.GameError ) )
-					GbaLog.Write( LogCategory.GBAIO, LogLevel.GameError, $"Read from unused I/O register: {offset:X3}" );
-				return (ushort)Gba.Cpu.OpenBusPrefetch;
+				return ReadUnusedRegister( offset );
 		}
 	}
 
 	public void Write8( uint offset, byte value )
 	{
-		if ( offset == 0x301 )
+		switch ( offset )
 		{
-			Gba.Cpu.Halted = true;
-			return;
-		}
-		if ( offset == 0x300 )
-		{
-			PostFlg = value;
-			return;
-		}
-
-		if ( offset >= 0x060 && offset <= 0x089 )
-		{
-			uint halfOffset = offset & ~1u;
-			bool highByte = (offset & 1) != 0;
-			Gba.Audio.WriteRegisterByte( halfOffset, highByte, value );
-			return;
+			case 0x062:
+			case 0x063:
+			case 0x064:
+			case 0x065:
+			case 0x068:
+			case 0x069:
+			case 0x06C:
+			case 0x06D:
+			case 0x072:
+			case 0x073:
+			case 0x074:
+			case 0x075:
+			case 0x078:
+			case 0x079:
+			case 0x07C:
+			case 0x07D:
+				{
+					uint halfOffset = offset & ~1u;
+					bool highByte = (offset & 1) != 0;
+					Gba.Audio.WriteRegisterByte( halfOffset, highByte, value );
+					Gba.Memory.Io[halfOffset >> 1] = Gba.Audio.ReadRegister( halfOffset );
+					return;
+				}
 		}
 
 		uint halfOffset2 = offset & ~1u;
-		ushort current = Read16( halfOffset2 );
+		ushort[] io = Gba.Memory.Io;
+		ushort current = io[halfOffset2 >> 1];
 		if ( (offset & 1) == 0 )
 			current = (ushort)((current & 0xFF00) | value);
 		else
@@ -510,9 +629,16 @@ public class GbaIo
 
 	public void Write16( uint offset, ushort value )
 	{
+		ushort[] io = Gba.Memory.Io;
+		int ioIndex = (int)(offset >> 1);
+		bool writeIo = ioIndex >= 0 && ioIndex < io.Length;
+
 		switch ( offset )
 		{
-			case 0x000: Gba.Video.WriteDispCnt( value ); break;
+			case 0x000:
+				Gba.Video.WriteDispCnt( value );
+				value = Gba.Video.DispCnt;
+				break;
 			case 0x004:
 				{
 					ushort dispstat = (ushort)((Gba.Video.DispStat & 0x7) | (value & 0xFFF8));
@@ -528,22 +654,31 @@ public class GbaIo
 						dispstat &= unchecked((ushort)~0x0004);
 					}
 					Gba.Video.DispStat = dispstat;
+					value = dispstat;
 					break;
 				}
-			case 0x006: break;
-			case 0x008: Gba.Video.WriteBgCnt( 0, value ); break;
-			case 0x00A: Gba.Video.WriteBgCnt( 1, value ); break;
+			case 0x006:
+				writeIo = false;
+				break;
+			case 0x008:
+				value &= 0xDFFF;
+				Gba.Video.WriteBgCnt( 0, value );
+				break;
+			case 0x00A:
+				value &= 0xDFFF;
+				Gba.Video.WriteBgCnt( 1, value );
+				break;
 			case 0x00C: Gba.Video.WriteBgCnt( 2, value ); break;
 			case 0x00E: Gba.Video.WriteBgCnt( 3, value ); break;
 
-			case 0x010: Gba.Video.BgHOfs[0] = (short)(value & 0x1FF); break;
-			case 0x012: Gba.Video.BgVOfs[0] = (short)(value & 0x1FF); break;
-			case 0x014: Gba.Video.BgHOfs[1] = (short)(value & 0x1FF); break;
-			case 0x016: Gba.Video.BgVOfs[1] = (short)(value & 0x1FF); break;
-			case 0x018: Gba.Video.BgHOfs[2] = (short)(value & 0x1FF); break;
-			case 0x01A: Gba.Video.BgVOfs[2] = (short)(value & 0x1FF); break;
-			case 0x01C: Gba.Video.BgHOfs[3] = (short)(value & 0x1FF); break;
-			case 0x01E: Gba.Video.BgVOfs[3] = (short)(value & 0x1FF); break;
+			case 0x010: value &= 0x01FF; Gba.Video.BgHOfs[0] = (short)value; break;
+			case 0x012: value &= 0x01FF; Gba.Video.BgVOfs[0] = (short)value; break;
+			case 0x014: value &= 0x01FF; Gba.Video.BgHOfs[1] = (short)value; break;
+			case 0x016: value &= 0x01FF; Gba.Video.BgVOfs[1] = (short)value; break;
+			case 0x018: value &= 0x01FF; Gba.Video.BgHOfs[2] = (short)value; break;
+			case 0x01A: value &= 0x01FF; Gba.Video.BgVOfs[2] = (short)value; break;
+			case 0x01C: value &= 0x01FF; Gba.Video.BgHOfs[3] = (short)value; break;
+			case 0x01E: value &= 0x01FF; Gba.Video.BgVOfs[3] = (short)value; break;
 
 			case 0x020: Gba.Video.BgPA[0] = (short)value; break;
 			case 0x022: Gba.Video.BgPB[0] = (short)value; break;
@@ -591,18 +726,18 @@ public class GbaIo
 				Gba.Video.BgY[1] = Gba.Video.BgRefY[1];
 				break;
 
-			case 0x040: Gba.Video.Win0H = value; break;
-			case 0x042: Gba.Video.Win1H = value; break;
-			case 0x044: Gba.Video.Win0V = value; break;
-			case 0x046: Gba.Video.Win1V = value; break;
-			case 0x048: Gba.Video.WinIn = value; break;
-			case 0x04A: Gba.Video.WinOut = value; break;
+			case 0x040: Gba.Video.Win0H = value; value = Gba.Video.Win0H; break;
+			case 0x042: Gba.Video.Win1H = value; value = Gba.Video.Win1H; break;
+			case 0x044: Gba.Video.Win0V = value; value = Gba.Video.Win0V; break;
+			case 0x046: Gba.Video.Win1V = value; value = Gba.Video.Win1V; break;
+			case 0x048: value &= 0x3F3F; Gba.Video.WinIn = value; break;
+			case 0x04A: value &= 0x3F3F; Gba.Video.WinOut = value; break;
 
 			case 0x04C: Gba.Video.Mosaic = value; break;
 
-			case 0x050: Gba.Video.BldCnt = value; break;
-			case 0x052: Gba.Video.BldAlpha = value; break;
-			case 0x054: Gba.Video.BldY = value; break;
+			case 0x050: value &= 0x3FFF; Gba.Video.BldCnt = value; break;
+			case 0x052: value &= 0x1F1F; Gba.Video.BldAlpha = value; break;
+			case 0x054: value &= 0x001F; Gba.Video.BldY = value; break;
 
 			case 0x060:
 			case 0x062:
@@ -624,8 +759,15 @@ public class GbaIo
 			case 0x082:
 			case 0x084:
 			case 0x088:
-			case 0x08A:
+				if ( offset <= 0x080 && !Gba.Audio.Enable )
+				{
+					writeIo = false;
+					break;
+				}
+				if ( offset == 0x088 )
+					value &= 0xC3FE;
 				Gba.Audio.WriteRegister( offset, value );
+				value = Gba.Audio.ReadRegister( offset );
 				break;
 			case 0x090:
 			case 0x092:
@@ -687,6 +829,7 @@ public class GbaIo
 			case 0x122:
 			case 0x12A:
 				WriteSioRegister( offset, value );
+				value = _sioRegs[(int)((offset - 0x120) >> 1)];
 				break;
 			case 0x124:
 			case 0x126:
@@ -694,68 +837,104 @@ public class GbaIo
 				break;
 			case 0x12C:
 			case 0x12E:
+				writeIo = false;
 				break;
 			case 0x128:
 				WriteSioCnt( value );
+				value = _sioCnt;
 				break;
 
-			case 0x130: break;
+			case 0x130:
+				writeIo = false;
+				break;
 			case 0x132:
 				value &= 0xC3FF;
-				if ( _keysLast < 0x400 )
-					_keysLast &= (ushort)(KeyCnt | ~value);
+				if ( Gba.KeysLast < 0x400 )
+					Gba.KeysLast &= (ushort)(KeyCnt | ~value);
 				KeyCnt = value;
 				TestKeypadIrq();
 				break;
 
 			case 0x134:
 				WriteRcnt( (ushort)(value & 0xC1FF) );
+				value = Rcnt;
 				break;
 			case 0x136:
 			case 0x138:
 			case 0x13A:
 			case 0x13C:
 			case 0x13E:
+				writeIo = false;
 				break;
 			case 0x140:
 				WriteSioRegister( offset, value );
+				value = _sioRegs[16];
 				break;
 			case 0x142:
+				writeIo = false;
 				break;
 			case 0x150:
 			case 0x152:
 				WriteSioRegister( offset, value );
+				value = _sioRegs[(int)((offset - 0x120) >> 1)];
 				break;
 			case 0x154:
 			case 0x156:
 				_sioRegs[28] |= 0x0008;
 				WriteSioRegister( offset, value );
+				value = _sioRegs[(int)((offset - 0x120) >> 1)];
 				break;
 			case 0x158:
 				WriteSioRegister( offset, value );
+				value = _sioRegs[28];
 				break;
 
 			case 0x200: IE = value; TestIrq( 1 ); break;
 			case 0x202:
 				IF &= (ushort)~value;
 				TestIrq( 1 );
+				value = IF;
 				break;
 			case 0x204:
 				value &= 0x5FFF;
 				WaitCnt = value;
 				Gba.Memory.AdjustWaitstates( value );
 				break;
-			case 0x208: IME = (ushort)(value & 1); TestIrq( 1 ); break;
+			case 0x208:
+				value = (ushort)(value & 1);
+				IME = value;
+				TestIrq( 1 );
+				break;
 			case 0x20A:
 			case 0x206:
 			case 0x302:
+				writeIo = false;
 				break;
-			case 0x300: PostFlg = (byte)value; break;
+			case 0x300:
+				if ( Gba.Cpu.Gprs[15] >= GbaConstants.BiosSize )
+				{
+					GbaLog.Write( LogCategory.GBAIO, LogLevel.GameError, "Write to BIOS-only I/O register: {0:X3}", offset );
+					writeIo = false;
+					break;
+				}
+
+				if ( PostFlg != 0 )
+				{
+					Gba.Cpu.Halted = true;
+					value &= 0x7FFF;
+				}
+
+				PostFlg = (byte)value;
+				value = PostFlg;
+				break;
 			default:
-				if ( GbaLog.FilterTest( LogCategory.GBAIO, LogLevel.GameError ) )
-					GbaLog.Write( LogCategory.GBAIO, LogLevel.GameError, $"Write to unused I/O register: {offset:X3}" );
+				GbaLog.Write( LogCategory.GBAIO, LogLevel.GameError, "Write to unused I/O register: {0:X3}", offset );
+				writeIo = false;
 				break;
 		}
+
+		if ( writeIo )
+			io[ioIndex] = value;
 	}
 
 	public void Serialize( BinaryWriter w )
@@ -768,7 +947,7 @@ public class GbaIo
 		w.Write( _sioCompletionCycle );
 		for ( int i = 0; i < _sioRegs.Length; i++ )
 			w.Write( _sioRegs[i] );
-		w.Write( _keysLast );
+		w.Write( Gba.KeysLast );
 	}
 
 	public void Deserialize( BinaryReader r )
@@ -781,7 +960,7 @@ public class GbaIo
 		_sioCompletionCycle = r.ReadInt64();
 		for ( int i = 0; i < _sioRegs.Length; i++ )
 			_sioRegs[i] = r.ReadUInt16();
-		_keysLast = r.ReadUInt16();
+		Gba.KeysLast = r.ReadUInt16();
 	}
 }
 

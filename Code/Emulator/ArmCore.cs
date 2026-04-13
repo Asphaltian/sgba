@@ -243,6 +243,43 @@ public partial class ArmCore
 		_pipelineCyclesPrecharged = true;
 	}
 
+	public uint LoadBadValue()
+	{
+		uint value = OpenBusPrefetch;
+
+		if ( ThumbMode )
+		{
+			uint prefetch0 = _prefetch0 & 0xFFFF;
+			uint prefetch1 = _prefetch1 & 0xFFFF;
+			value = prefetch1;
+
+			switch ( Gprs[15] >> 24 )
+			{
+				case 0x0:
+				case 0x7:
+					value <<= 16;
+					value |= prefetch0;
+					break;
+				case 0x3:
+					if ( (Gprs[15] & 2) != 0 )
+					{
+						value <<= 16;
+						value |= prefetch0;
+					}
+					else
+					{
+						value |= prefetch0 << 16;
+					}
+					break;
+				default:
+					value |= value << 16;
+					break;
+			}
+		}
+
+		return value;
+	}
+
 	public void SerializePipeline( BinaryWriter w )
 	{
 		w.Write( _prefetchFlushed );

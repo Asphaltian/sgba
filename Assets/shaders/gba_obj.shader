@@ -30,7 +30,7 @@ CS
 
 	RWTexture2D<float4> OutputColor < Attribute( "OutputColor" ); >;
 	RWTexture2D<uint>   OutputFlags < Attribute( "OutputFlags" ); >;
-	RWTexture2D<uint>   ObjWindowMask < Attribute( "ObjWindowMask" ); >;
+	RWTexture2D<uint>   WindowTex < Attribute( "WindowTex" ); >;
 
 	#define FLAG_8BPP          1u
 	#define FLAG_FLIPH         2u
@@ -52,13 +52,13 @@ CS
 
 		OutputColor[id.xy] = float4( 0, 0, 0, 0 );
 		OutputFlags[id.xy] = 0xFFFFFFFFu;
-		ObjWindowMask[id.xy] = 0;
 
 		if ( nativeY >= 160u || nativeX >= 240u )
 			return;
 
 		ScanlineState state = States[nativeY];
 		uint dispCnt = GetDispCnt( state );
+		uint winOut = UnpackLow16( state.WinOutPad );
 
 		if ( ( dispCnt & 0x1000u ) == 0u )
 			return;
@@ -78,7 +78,6 @@ CS
 		int bestPriority = 5;
 		float4 bestColor = float4( 0, 0, 0, 0 );
 		uint bestFlags = 0;
-		bool foundObjWindow = false;
 
 		uint mosaicReg = GetMosaic( state );
 		int objMosH = (int)( ( mosaicReg >> 8u ) & 0xFu ) + 1;
@@ -184,7 +183,8 @@ CS
 
 			if ( ( flags & FLAG_OBJWINDOW ) != 0u )
 			{
-				foundObjWindow = true;
+				if ( ( dispCnt & 0x8000u ) != 0u )
+					WindowTex[id.xy] = ( winOut >> 8 ) & 0x3Fu;
 				continue;
 			}
 
@@ -197,9 +197,6 @@ CS
 				bestFlags = (uint)priority | ( ( flags & FLAG_SEMITRANS ) != 0u ? 4u : 0u );
 			}
 		}
-
-		if ( foundObjWindow )
-			ObjWindowMask[id.xy] = 1u;
 
 		if ( bestColor.a > 0.0 )
 		{

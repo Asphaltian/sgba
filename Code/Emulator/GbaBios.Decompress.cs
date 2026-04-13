@@ -334,12 +334,6 @@ public partial class GbaBios
 		Gba.Cpu.Registers[1] = dst;
 	}
 
-	private void SoundBias() { }
-	private void SoundDriverInit() { }
-	private void SoundDriverMode() { }
-	private void SoundDriverMain() { }
-	private void SoundDriverVSync() { }
-	private void SoundChannelClear() { }
 	private void MidiKey2Freq()
 	{
 		uint waveDataPtr = Gba.Cpu.Registers[0];

@@ -25,7 +25,35 @@ public partial class GbaVideo
 	public ushort BldAlpha;
 	public ushort BldY;
 
-	public ushort Win0H, Win0V, Win1H, Win1V;
+	private ushort _win0H;
+	private ushort _win0V;
+	private ushort _win1H;
+	private ushort _win1V;
+
+	public ushort Win0H
+	{
+		get => _win0H;
+		set => _win0H = CleanWindowRange( value, GbaConstants.ScreenWidth );
+	}
+
+	public ushort Win0V
+	{
+		get => _win0V;
+		set => _win0V = CleanWindowRange( value, GbaConstants.ScreenHeight );
+	}
+
+	public ushort Win1H
+	{
+		get => _win1H;
+		set => _win1H = CleanWindowRange( value, GbaConstants.ScreenWidth );
+	}
+
+	public ushort Win1V
+	{
+		get => _win1V;
+		set => _win1V = CleanWindowRange( value, GbaConstants.ScreenHeight );
+	}
+
 	public ushort WinIn, WinOut;
 	public ushort Mosaic;
 
@@ -45,6 +73,24 @@ public partial class GbaVideo
 		Gba = gba;
 	}
 
+	private static ushort CleanWindowRange( ushort value, int limit )
+	{
+		int start = value >> 8;
+		int end = value & 0xFF;
+
+		if ( start > limit && start > end )
+			start = 0;
+
+		if ( end > limit )
+		{
+			end = limit;
+			if ( start > limit )
+				start = limit;
+		}
+
+		return (ushort)( end | ( start << 8 ) );
+	}
+
 	public void Reset()
 	{
 		VCount = 0;
@@ -62,6 +108,10 @@ public partial class GbaVideo
 		Array.Clear( BgY );
 		Array.Clear( BgRefX );
 		Array.Clear( BgRefY );
+		_win0H = 0;
+		_win0V = 0;
+		_win1H = 0;
+		_win1V = 0;
 
 		_firstAffine = -1;
 		_lastDrawnY = -1;

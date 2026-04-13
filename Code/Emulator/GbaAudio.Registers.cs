@@ -83,9 +83,6 @@ public partial class GbaAudio
 
 	public void WriteRegisterByte( uint regOffset, bool highByte, byte value )
 	{
-		if ( regOffset >= 0x60 && regOffset < 0x80 && !Enable )
-			return;
-
 		if ( regOffset != 0x82 )
 			FlushSamples();
 
@@ -600,6 +597,10 @@ public partial class GbaAudio
 
 		if ( wasEnabled && !nowEnabled )
 		{
+			ushort[] io = Gba.Memory.Io;
+			for ( uint offset = 0x60; offset < 0x82; offset += 2 )
+				io[offset >> 1] = 0;
+
 			_ch1Playing = false;
 			_ch2Playing = false;
 			_ch3Playing = false;
@@ -642,6 +643,7 @@ public partial class GbaAudio
 			_volumeChB = false;
 
 			SoundCntH &= 0xFF00;
+			io[0x82 >> 1] &= 0xFF00;
 		}
 		else if ( !wasEnabled && nowEnabled )
 		{

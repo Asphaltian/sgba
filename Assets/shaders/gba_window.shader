@@ -23,7 +23,6 @@ CS
 	#include "gba_common.hlsl"
 
 	StructuredBuffer<ScanlineState> States < Attribute( "ScanlineStates" ); >;
-	Texture2D<uint> ObjWindowMask < Attribute( "ObjWindowMask" ); >;
 	RWTexture2D<uint> OutputMask < Attribute( "OutputMask" ); >;
 	int Scale < Attribute( "Scale" ); >;
 	float3 Circle0 < Attribute( "Circle0" ); Default3( 0, 0, 0 ); >;
@@ -164,10 +163,6 @@ CS
 		else if ( inWin1 )
 		{
 			mask = ( winIn >> 8 ) & 0x3Fu;
-		}
-		else if ( objWinEnable && ObjWindowMask.Load( int3( id.xy, 0 ) ) != 0 )
-		{
-			mask = ( winOut >> 8 ) & 0x3Fu;
 		}
 		else
 		{

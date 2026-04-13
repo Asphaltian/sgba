@@ -21,6 +21,7 @@ public partial class GbaBios
 				Gba.Cpu.Registers[11] = (uint)BiosStall;
 				return true;
 			case 0xFA:
+				Gba.Memory.FlushAgbPrint();
 				return true;
 		}
 
@@ -64,61 +65,205 @@ public partial class GbaBios
 				break;
 			case 0x0B: // CpuSet
 			case 0x0C: // CpuFastSet
-				if ( (Gba.Cpu.Registers[0] >> 24) < 2 ) break;
+				if ( (Gba.Cpu.Registers[0] >> 24) < 2 )
+				{
+					GbaLog.Write( LogCategory.GBABIOS, LogLevel.GameError, "Cannot CpuSet from BIOS" );
+					break;
+				}
+
+				uint alignmentMask = (Gba.Cpu.Registers[2] & (1u << 26)) != 0 ? 3u : 1u;
+				if ( (Gba.Cpu.Registers[0] & alignmentMask) != 0 )
+					GbaLog.Write( LogCategory.GBABIOS, LogLevel.GameError, "Misaligned CpuSet source" );
+				if ( (Gba.Cpu.Registers[1] & alignmentMask) != 0 )
+					GbaLog.Write( LogCategory.GBABIOS, LogLevel.GameError, "Misaligned CpuSet destination" );
+
 				HleActive = false;
 				return false;
 			case 0x0D: GetBiosChecksum(); break;
 			case 0x0E: BgAffineSet(); break;
 			case 0x0F: ObjAffineSet(); break;
 			case 0x10:
-				if ( Gba.Cpu.Registers[0] < 0x02000000 ) break;
-				BitUnPack();
+				if ( Gba.Cpu.Registers[0] < 0x02000000 )
+				{
+					GbaLog.Write( LogCategory.GBABIOS, LogLevel.GameError, "Bad BitUnPack source" );
+					break;
+				}
+
+				switch ( Gba.Cpu.Registers[1] >> 24 )
+				{
+					default:
+						GbaLog.Write( LogCategory.GBABIOS, LogLevel.GameError, "Bad BitUnPack destination" );
+						goto case 0x2;
+					case 0x2:
+					case 0x3:
+					case 0x6:
+						BitUnPack();
+						break;
+				}
 				break;
 			case 0x11:
-				if ( (Gba.Cpu.Registers[0] & 0x0E000000) == 0 ) break;
-				useStall = true;
-				LZ77UnCompWram();
+				if ( (Gba.Cpu.Registers[0] & 0x0E000000) == 0 )
+				{
+					GbaLog.Write( LogCategory.GBABIOS, LogLevel.GameError, "Bad LZ77 source" );
+					break;
+				}
+
+				switch ( Gba.Cpu.Registers[1] >> 24 )
+				{
+					default:
+						GbaLog.Write( LogCategory.GBABIOS, LogLevel.GameError, "Bad LZ77 destination" );
+						goto case 0x2;
+					case 0x2:
+					case 0x3:
+					case 0x6:
+						useStall = true;
+						LZ77UnCompWram();
+						break;
+				}
 				break;
 			case 0x12:
-				if ( (Gba.Cpu.Registers[0] & 0x0E000000) == 0 ) break;
-				useStall = true;
-				LZ77UnCompVram();
+				if ( (Gba.Cpu.Registers[0] & 0x0E000000) == 0 )
+				{
+					GbaLog.Write( LogCategory.GBABIOS, LogLevel.GameError, "Bad LZ77 source" );
+					break;
+				}
+
+				switch ( Gba.Cpu.Registers[1] >> 24 )
+				{
+					default:
+						GbaLog.Write( LogCategory.GBABIOS, LogLevel.GameError, "Bad LZ77 destination" );
+						goto case 0x2;
+					case 0x2:
+					case 0x3:
+					case 0x6:
+						useStall = true;
+						LZ77UnCompVram();
+						break;
+				}
 				break;
 			case 0x13:
-				if ( (Gba.Cpu.Registers[0] & 0x0E000000) == 0 ) break;
-				HuffmanUnComp();
+				if ( (Gba.Cpu.Registers[0] & 0x0E000000) == 0 )
+				{
+					GbaLog.Write( LogCategory.GBABIOS, LogLevel.GameError, "Bad Huffman source" );
+					break;
+				}
+
+				switch ( Gba.Cpu.Registers[1] >> 24 )
+				{
+					default:
+						GbaLog.Write( LogCategory.GBABIOS, LogLevel.GameError, "Bad Huffman destination" );
+						goto case 0x2;
+					case 0x2:
+					case 0x3:
+					case 0x6:
+						HuffmanUnComp();
+						break;
+				}
 				break;
 			case 0x14:
-				if ( (Gba.Cpu.Registers[0] & 0x0E000000) == 0 ) break;
-				RLUnCompWram();
+				if ( (Gba.Cpu.Registers[0] & 0x0E000000) == 0 )
+				{
+					GbaLog.Write( LogCategory.GBABIOS, LogLevel.GameError, "Bad RL source" );
+					break;
+				}
+
+				switch ( Gba.Cpu.Registers[1] >> 24 )
+				{
+					default:
+						GbaLog.Write( LogCategory.GBABIOS, LogLevel.GameError, "Bad RL destination" );
+						goto case 0x2;
+					case 0x2:
+					case 0x3:
+					case 0x6:
+						RLUnCompWram();
+						break;
+				}
 				break;
 			case 0x15:
-				if ( (Gba.Cpu.Registers[0] & 0x0E000000) == 0 ) break;
-				RLUnCompVram();
+				if ( (Gba.Cpu.Registers[0] & 0x0E000000) == 0 )
+				{
+					GbaLog.Write( LogCategory.GBABIOS, LogLevel.GameError, "Bad RL source" );
+					break;
+				}
+
+				switch ( Gba.Cpu.Registers[1] >> 24 )
+				{
+					default:
+						GbaLog.Write( LogCategory.GBABIOS, LogLevel.GameError, "Bad RL destination" );
+						goto case 0x2;
+					case 0x2:
+					case 0x3:
+					case 0x6:
+						RLUnCompVram();
+						break;
+				}
 				break;
 			case 0x16:
-				if ( (Gba.Cpu.Registers[0] & 0x0E000000) == 0 ) break;
-				Diff8BitUnFilterWram();
+				if ( (Gba.Cpu.Registers[0] & 0x0E000000) == 0 )
+				{
+					GbaLog.Write( LogCategory.GBABIOS, LogLevel.GameError, "Bad UnFilter source" );
+					break;
+				}
+
+				switch ( Gba.Cpu.Registers[1] >> 24 )
+				{
+					default:
+						GbaLog.Write( LogCategory.GBABIOS, LogLevel.GameError, "Bad UnFilter destination" );
+						goto case 0x2;
+					case 0x2:
+					case 0x3:
+					case 0x6:
+						Diff8BitUnFilterWram();
+						break;
+				}
 				break;
 			case 0x17:
-				if ( (Gba.Cpu.Registers[0] & 0x0E000000) == 0 ) break;
-				Diff8BitUnFilterVram();
+				if ( (Gba.Cpu.Registers[0] & 0x0E000000) == 0 )
+				{
+					GbaLog.Write( LogCategory.GBABIOS, LogLevel.GameError, "Bad UnFilter source" );
+					break;
+				}
+
+				switch ( Gba.Cpu.Registers[1] >> 24 )
+				{
+					default:
+						GbaLog.Write( LogCategory.GBABIOS, LogLevel.GameError, "Bad UnFilter destination" );
+						goto case 0x2;
+					case 0x2:
+					case 0x3:
+					case 0x6:
+						Diff8BitUnFilterVram();
+						break;
+				}
 				break;
 			case 0x18:
-				if ( (Gba.Cpu.Registers[0] & 0x0E000000) == 0 ) break;
-				Diff16BitUnFilter();
+				if ( (Gba.Cpu.Registers[0] & 0x0E000000) == 0 )
+				{
+					GbaLog.Write( LogCategory.GBABIOS, LogLevel.GameError, "Bad UnFilter source" );
+					break;
+				}
+
+				switch ( Gba.Cpu.Registers[1] >> 24 )
+				{
+					default:
+						GbaLog.Write( LogCategory.GBABIOS, LogLevel.GameError, "Bad UnFilter destination" );
+						goto case 0x2;
+					case 0x2:
+					case 0x3:
+					case 0x6:
+						Diff16BitUnFilter();
+						break;
+				}
 				break;
-			case 0x19: SoundBias(); break;
-			case 0x1A: SoundDriverInit(); break;
-			case 0x1B: SoundDriverMode(); break;
-			case 0x1C: SoundDriverMain(); break;
-			case 0x1D: SoundDriverVSync(); break;
-			case 0x1E: SoundChannelClear(); break;
+			case 0x19:
+				GbaLog.Write( LogCategory.GBABIOS, LogLevel.Stub, "Stub software interrupt: SoundBias (19)" );
+				break;
 			case 0x1F: MidiKey2Freq(); break;
 			case 0x2A: // SoundDriverGetJumpList
 				HleActive = false;
 				return false;
 			default:
+				GbaLog.Write( LogCategory.GBABIOS, LogLevel.Stub, "Stub software interrupt: {0:X2}", comment );
 				break;
 		}
 

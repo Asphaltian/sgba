@@ -256,6 +256,7 @@ public static class GbaSerialize
 		memory.Debug = r.ReadBoolean();
 		r.Read( memory.DebugString );
 		memory.DebugFlags = r.ReadUInt16();
+		memory.ClearAgbPrint();
 	}
 
 	private static void WriteVideo( BinaryWriter w, GbaVideo video )
@@ -342,10 +343,10 @@ public static class GbaSerialize
 	{
 		w.Write( io.IE ); w.Write( io.IF ); w.Write( io.IME );
 		w.Write( io.WaitCnt );
-		w.Write( io.KeyInput ); w.Write( io.KeyCnt );
+		w.Write( io.Read16( 0x130 ) ); w.Write( io.KeyCnt );
 		w.Write( io.Rcnt );
 		w.Write( io.PostFlg );
-		w.Write( io.HaltPending );
+		w.Write( io.Gba.HaltPending );
 		io.Serialize( w );
 	}
 
@@ -353,10 +354,12 @@ public static class GbaSerialize
 	{
 		io.IE = r.ReadUInt16(); io.IF = r.ReadUInt16(); io.IME = r.ReadUInt16();
 		io.WaitCnt = r.ReadUInt16();
-		io.KeyInput = r.ReadUInt16(); io.KeyCnt = r.ReadUInt16();
+		ushort keyInput = r.ReadUInt16(); io.KeyCnt = r.ReadUInt16();
+		io.Gba.KeysActive = (ushort)(0x03FF ^ (keyInput & 0x03FF));
+		io.Gba.Memory.Io[0x130 >> 1] = keyInput;
 		io.Rcnt = r.ReadUInt16();
 		io.PostFlg = r.ReadByte();
-		io.HaltPending = r.ReadBoolean();
+		io.Gba.HaltPending = r.ReadBoolean();
 		io.Deserialize( r );
 	}
 

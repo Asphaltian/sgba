@@ -56,7 +56,7 @@ public partial class GbaVideo
 	private GpuBuffer<uint> _gpuPalette;
 
 	private Texture _bg0Tex, _bg1Tex, _bg2Tex, _bg3Tex;
-	private Texture _objColorTex, _objFlagsTex, _objWindowMaskTex, _windowTex;
+	private Texture _objColorTex, _objFlagsTex, _windowTex;
 
 	private ComputeShader _csBgMode0, _csBgMode2, _csBgMode3, _csBgMode4, _csBgMode5;
 	private ComputeShader _csObj, _csWindow, _csFinalize;
@@ -106,7 +106,6 @@ public partial class GbaVideo
 		_bg3Tex = CreateLayerRT();
 		_objColorTex = CreateLayerRT();
 		_objFlagsTex = CreateUintRT();
-		_objWindowMaskTex = CreateUintRT();
 		_windowTex = CreateUintRT();
 
 		OutputTexture = Texture.CreateRenderTarget()
@@ -357,6 +356,28 @@ public partial class GbaVideo
 		_writeSlot ^= 1;
 	}
 
+	private void DispatchWindowPass( CommandList cmd, Vector3 circle0, Vector3 circle1 )
+	{
+		cmd.Attributes.Set( "OutputMask", _windowTex );
+		cmd.Attributes.Set( "Circle0", circle0 );
+		cmd.Attributes.Set( "Circle1", circle1 );
+		cmd.DispatchCompute( _csWindow, _scaledWidth, _scaledHeight, 1 );
+		cmd.UavBarrier( _windowTex );
+	}
+
+	private void DispatchObjPass( CommandList cmd )
+	{
+		cmd.Attributes.Set( "Sprites", _gpuSprites );
+		cmd.Attributes.Set( "OutputColor", _objColorTex );
+		cmd.Attributes.Set( "OutputFlags", _objFlagsTex );
+		cmd.Attributes.Set( "WindowTex", _windowTex );
+		cmd.DispatchCompute( _csObj, _scaledWidth, _scaledHeight, 1 );
+
+		cmd.UavBarrier( _objColorTex );
+		cmd.UavBarrier( _objFlagsTex );
+		cmd.UavBarrier( _windowTex );
+	}
+
 	public bool UploadAndBuildCommandList()
 	{
 		int slot = Interlocked.CompareExchange( ref _readSlot, 0, 0 );
@@ -385,22 +406,8 @@ public partial class GbaVideo
 		cmd.Attributes.Set( "Palette", _gpuPalette );
 		cmd.Attributes.Set( "Scale", GpuScale );
 
-		cmd.Attributes.Set( "Sprites", _gpuSprites );
-		cmd.Attributes.Set( "OutputColor", _objColorTex );
-		cmd.Attributes.Set( "OutputFlags", _objFlagsTex );
-		cmd.Attributes.Set( "ObjWindowMask", _objWindowMaskTex );
-		cmd.DispatchCompute( _csObj, _scaledWidth, _scaledHeight, 1 );
-
-		cmd.UavBarrier( _objColorTex );
-		cmd.UavBarrier( _objFlagsTex );
-		cmd.UavBarrier( _objWindowMaskTex );
-
-		cmd.Attributes.Set( "OutputMask", _windowTex );
-		cmd.Attributes.Set( "Circle0", circle0 );
-		cmd.Attributes.Set( "Circle1", circle1 );
-		cmd.DispatchCompute( _csWindow, _scaledWidth, _scaledHeight, 1 );
-
-		cmd.UavBarrier( _windowTex );
+		DispatchWindowPass( cmd, circle0, circle1 );
+		DispatchObjPass( cmd );
 
 		cmd.Attributes.Set( "OldCharBase2", new Vector2( _frameOldCharBase[0], _frameOldCharBaseFirstY[0] ) );
 		cmd.Attributes.Set( "OldCharBase3", new Vector2( _frameOldCharBase[1], _frameOldCharBaseFirstY[1] ) );
@@ -476,11 +483,16 @@ public partial class GbaVideo
 		if ( GpuScale < 2 ) return;
 
 		int firstY = 0;
+		int lastStartX = 0;
+		int lastEndX = 0;
+		int startX = 0;
+		int endX = 0;
 
-		float centerX = -1, centerY = -1, radius = 0;
-		bool invalid = false;
 		int circleFirstY = -1;
-		int startX = 0, endX = 0;
+		float centerX = -1;
+		float centerY = -1;
+		float radius = 0;
+		bool invalid = false;
 
 		for ( int y = firstY; y < GbaConstants.VisibleLines; y++ )
 		{
@@ -498,8 +510,8 @@ public partial class GbaVideo
 				winV = s.Win1VWinIn & 0xFFFFu;
 			}
 
-			int lastStartX = startX;
-			int lastEndX = endX;
+			lastStartX = startX;
+			lastEndX = endX;
 			startX = (int)((winH >> 8) & 0xFF);
 			endX = (int)(winH & 0xFF);
 			int startY = (int)((winV >> 8) & 0xFF);
@@ -535,16 +547,15 @@ public partial class GbaVideo
 				radius = (lastEndX - lastStartX) / 2.0f;
 			}
 
-			if ( circleFirstY < 0 )
+			if ( circleFirstY < 0 && y - 1 >= startY && y - 1 < endY )
 			{
-				int prevStartY = (int)((window == 0 ? states[Math.Max( 0, y - 1 )].Win0VWin1H & 0xFFFFu : states[Math.Max( 0, y - 1 )].Win1VWinIn & 0xFFFFu) >> 8 & 0xFF);
-				int prevEndY = (int)((window == 0 ? states[Math.Max( 0, y - 1 )].Win0VWin1H & 0xFFFFu : states[Math.Max( 0, y - 1 )].Win1VWinIn & 0xFFFFu) & 0xFF);
-				if ( y - 1 >= prevStartY && y - 1 < prevEndY )
-					circleFirstY = y - 1;
+				circleFirstY = y - 1;
 			}
 		}
 
-		if ( radius <= 0 || centerX < 0 || centerY < 0 ) return;
+		if ( radius <= 0 ) invalid = true;
+		if ( centerX < 0 ) invalid = true;
+		if ( centerY < 0 ) invalid = true;
 
 		for ( int y = firstY; y < GbaConstants.VisibleLines && !invalid; y++ )
 		{
@@ -570,20 +581,23 @@ public partial class GbaVideo
 
 			if ( xActive && yActive )
 			{
-				float dy = Math.Abs( centerY - y );
-				if ( dy > radius ) { invalid = true; break; }
-				float sine = MathF.Sqrt( radius * radius - dy * dy );
+				if ( centerY - y > radius ) { invalid = true; break; }
+				if ( y - centerY > radius ) { invalid = true; break; }
+
+				float cosine = MathF.Abs( y - centerY );
+				float sine = MathF.Sqrt( radius * radius - cosine * cosine );
 				if ( MathF.Abs( centerX - sine - sx ) <= 1 && MathF.Abs( centerX + sine - ex ) <= 1 )
 					continue;
-				if ( radius >= dy + 1 )
+
+				if ( radius >= cosine + 1 )
 				{
-					float sine2 = MathF.Sqrt( radius * radius - (dy + 1) * (dy + 1) );
+					float sine2 = MathF.Sqrt( radius * radius - (cosine + 1) * (cosine + 1) );
 					if ( MathF.Abs( centerX - sine2 - sx ) <= 1 && MathF.Abs( centerX + sine2 - ex ) <= 1 )
 						continue;
 				}
 				invalid = true;
 			}
-			else if ( Math.Abs( centerY - y ) < radius )
+			else if ( centerY - y < radius && y - centerY < radius )
 			{
 				invalid = true;
 			}

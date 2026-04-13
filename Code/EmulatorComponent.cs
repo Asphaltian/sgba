@@ -198,7 +198,7 @@ public sealed partial class EmulatorComponent : Component
 				var core = Core;
 				if ( core == null ) break;
 
-				core.Io.KeyInput = (ushort)Interlocked.CompareExchange( ref _inputKeys, 0, 0 );
+				core.KeysActive = (ushort)(0x03FF ^ Interlocked.CompareExchange( ref _inputKeys, 0, 0 ));
 
 				core.RunFrame();
 
