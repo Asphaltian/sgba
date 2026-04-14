@@ -21,10 +21,15 @@ public sealed partial class EmulatorComponent : Component
 	private string _savePath;
 	private CameraComponent _camera;
 
+	private const int AllKeysReleased = 0x03FF;
+	private const int AudioPrefillFrames = 8;
+	private const double GbaFrameTime = 1.0 / 59.7275;
+	private const float StickDeadzone = 0.3f;
+
 	private CancellationTokenSource _cts;
 	private Channel<FramePacket> _frameChannel;
 	private SemaphoreSlim _frameSemaphore;
-	private int _inputKeys = 0x03FF;
+	private int _inputKeys = AllKeysReleased;
 	private short[][] _audBufs;
 	private int _workerBufIdx;
 	private double _frameDebt;
@@ -33,11 +38,11 @@ public sealed partial class EmulatorComponent : Component
 	private int _inputCooldown;
 	private string _stateBasePath;
 
-	private readonly struct FramePacket( short[] a, int ac, byte[] s )
+	private readonly struct FramePacket( short[] audio, int audioSamples, byte[] saveData )
 	{
-		public readonly short[] Audio = a;
-		public readonly int AudioSamples = ac;
-		public readonly byte[] SaveData = s;
+		public readonly short[] Audio = audio;
+		public readonly int AudioSamples = audioSamples;
+		public readonly byte[] SaveData = saveData;
 	}
 
 	protected override void OnStart()
@@ -86,11 +91,11 @@ public sealed partial class EmulatorComponent : Component
 		_frameChannel = null;
 		_frameSemaphore?.Dispose();
 		_frameSemaphore = null;
-		_frameDebt = 0;
 		_workerBufIdx = 0;
+		_frameDebt = 0;
 		_inputCooldown = 0;
 		_paused = false;
-		_inputKeys = 0x03FF;
+		_inputKeys = AllKeysReleased;
 		IsReady = false;
 	}
 
@@ -105,8 +110,8 @@ public sealed partial class EmulatorComponent : Component
 				return;
 			}
 
-			var romFs = FileSystem.Mounted.FileExists( RomPath ) ? FileSystem.Mounted : FileSystem.Data;
-			var romData = romFs.ReadAllBytes( RomPath ).ToArray();
+			BaseFileSystem romFs = FileSystem.Mounted.FileExists( RomPath ) ? FileSystem.Mounted : FileSystem.Data;
+			byte[] romData = romFs.ReadAllBytes( RomPath ).ToArray();
 			if ( romData.Length < 192 )
 			{
 				ErrorMessage = "ROM file is too small to be a valid GBA ROM.";
@@ -120,7 +125,7 @@ public sealed partial class EmulatorComponent : Component
 			_savePath = "saves/" + System.IO.Path.GetFileNameWithoutExtension( RomPath ) + ".sav";
 			if ( FileSystem.Data.FileExists( _savePath ) )
 			{
-				var saveData = FileSystem.Data.ReadAllBytes( _savePath ).ToArray();
+				byte[] saveData = FileSystem.Data.ReadAllBytes( _savePath ).ToArray();
 				Core.Savedata.Load( saveData );
 			}
 
@@ -138,10 +143,10 @@ public sealed partial class EmulatorComponent : Component
 			try { InitAudioStream(); }
 			catch ( Exception audioEx ) { GbaLog.Write( LogCategory.GBAAudio, LogLevel.Warn, $"Audio init failed: {audioEx.Message}" ); }
 
-			int audSize = GbaAudio.SamplesPerFrame * 2;
+			int audioBufferSize = GbaAudio.SamplesPerFrame * 2;
 			_audBufs = new short[4][];
 			for ( int i = 0; i < 4; i++ )
-				_audBufs[i] = new short[audSize];
+				_audBufs[i] = new short[audioBufferSize];
 
 			_frameChannel = Channel.CreateBounded<FramePacket>( 2 );
 			_frameSemaphore = new SemaphoreSlim( 0, 4 );
@@ -154,9 +159,6 @@ public sealed partial class EmulatorComponent : Component
 			GbaLog.Write( LogCategory.GBA, LogLevel.Fatal, ErrorMessage );
 		}
 	}
-
-	private const int AudioHighWatermark = 6600;
-	private const int AudioPrefillFrames = 8;
 
 	private void InitAudioStream()
 	{
@@ -188,51 +190,54 @@ public sealed partial class EmulatorComponent : Component
 
 	private async Task EmulationLoop()
 	{
-		var token = _cts.Token;
+		CancellationToken token = _cts.Token;
 		try
 		{
 			while ( !token.IsCancellationRequested )
 			{
 				await _frameSemaphore.WaitAsync( token );
 
-				var core = Core;
-				if ( core == null ) break;
+				Gba core = Core;
+				if ( core == null )
+					break;
 
-				core.KeysActive = (ushort)(0x03FF ^ Interlocked.CompareExchange( ref _inputKeys, 0, 0 ));
-
+				core.KeysActive = (ushort)(AllKeysReleased ^ Interlocked.CompareExchange( ref _inputKeys, 0, 0 ));
 				core.RunFrame();
 
-				if ( token.IsCancellationRequested ) break;
+				if ( token.IsCancellationRequested )
+					break;
 
-				int idx = _workerBufIdx;
-				_workerBufIdx = (idx + 1) & 3;
-				var aud = _audBufs[idx];
+				int bufferIndex = _workerBufIdx;
+				_workerBufIdx = (bufferIndex + 1) & 3;
+				short[] audio = _audBufs[bufferIndex];
 
-				int sampleCount = core.Audio.SamplesWritten;
-				if ( sampleCount > 0 )
-					Buffer.BlockCopy( core.Audio.OutputBuffer, 0, aud, 0, sampleCount * 2 * sizeof( short ) );
+				int audioSamples = core.Audio.SamplesWritten;
+				if ( audioSamples > 0 )
+					Buffer.BlockCopy( core.Audio.OutputBuffer, 0, audio, 0, audioSamples * 2 * sizeof( short ) );
 
 				byte[] saveData = null;
 				if ( core.Savedata.Clean() && core.Savedata.Data.Length > 0 )
 					saveData = core.Savedata.Data.ToArray();
 
-				await _frameChannel.Writer.WriteAsync(
-					new FramePacket( aud, sampleCount, saveData ), token );
+				await _frameChannel.Writer.WriteAsync( new FramePacket( audio, audioSamples, saveData ), token );
 			}
 		}
 		catch ( OperationCanceledException ) { }
 		catch ( Exception ex )
 		{
 			GbaLog.Write( LogCategory.GBA, LogLevel.Fatal, $"Emulation worker error: {ex.Message}\n{ex.StackTrace}" );
-			_frameChannel.Writer.TryComplete( ex );
+			_frameChannel?.Writer.TryComplete( ex );
+		}
+		finally
+		{
+			_frameChannel?.Writer.TryComplete();
 		}
 	}
 
-	private const double GbaFrameTime = 1.0 / 59.7275;
-
 	protected override void OnUpdate()
 	{
-		if ( !IsReady || Core == null ) return;
+		if ( !IsReady || Core == null )
+			return;
 
 		PollInput();
 
@@ -258,13 +263,10 @@ public sealed partial class EmulatorComponent : Component
 
 		bool hasFrame = false;
 
-		while ( _frameChannel != null && _frameChannel.Reader.TryRead( out var frame ) )
+		while ( _frameChannel != null && _frameChannel.Reader.TryRead( out FramePacket frame ) )
 		{
-			if ( _audioStream != null && frame.AudioSamples > 0
-				&& _audioStream.QueuedSampleCount < AudioHighWatermark )
-			{
+			if ( _audioStream != null && frame.AudioSamples > 0 )
 				_audioStream.WriteData( frame.Audio.AsSpan( 0, frame.AudioSamples * 2 ) );
-			}
 
 			if ( frame.SaveData != null )
 				FileSystem.Data.WriteAllBytes( _savePath, frame.SaveData );
@@ -273,16 +275,15 @@ public sealed partial class EmulatorComponent : Component
 		}
 
 		if ( hasFrame )
-			Core?.Video?.UploadAndBuildCommandList();
+			Core.Video.UploadAndBuildCommandList();
 		else
-			Core?.Video?.RenderCommandList?.Reset();
+			Core.Video.RenderCommandList?.Reset();
 	}
-
-	private const float StickDeadzone = 0.3f;
 
 	private void PollInput()
 	{
-		if ( _paused ) return;
+		if ( _paused )
+			return;
 
 		if ( _inputCooldown > 0 )
 		{
@@ -300,7 +301,7 @@ public sealed partial class EmulatorComponent : Component
 			_inputCooldown = 0;
 		}
 
-		int keys = 0x03FF;
+		int keys = AllKeysReleased;
 		if ( Input.Down( "GBA_A" ) ) keys &= ~(int)GbaKey.A;
 		if ( Input.Down( "GBA_B" ) ) keys &= ~(int)GbaKey.B;
 		if ( Input.Down( "GBA_Start" ) ) keys &= ~(int)GbaKey.Start;
@@ -339,12 +340,14 @@ public sealed partial class EmulatorComponent : Component
 
 	public void CreateSuspendPoint( int slot )
 	{
-		if ( Core == null ) return;
+		if ( Core == null )
+			return;
+
 		try
 		{
-			var screenshot = Core.Video.CaptureScreenshot();
-			var data = GbaSerialize.Save( Core, screenshot );
-			var path = GetStatePath( slot );
+			byte[] screenshot = Core.Video.CaptureScreenshot();
+			byte[] data = GbaSerialize.Save( Core, screenshot );
+			string path = GetStatePath( slot );
 			FileSystem.Data.WriteAllBytes( path, data );
 			GbaLog.Write( LogCategory.GBAState, LogLevel.Info, $"Suspend point created in slot {slot}" );
 		}
@@ -356,17 +359,19 @@ public sealed partial class EmulatorComponent : Component
 
 	public void LoadSuspendPoint( int slot )
 	{
-		if ( Core == null ) return;
+		if ( Core == null )
+			return;
+
 		try
 		{
-			var path = GetStatePath( slot );
+			string path = GetStatePath( slot );
 			if ( !FileSystem.Data.FileExists( path ) )
 			{
 				GbaLog.Write( LogCategory.GBAState, LogLevel.Warn, $"No suspend point in slot {slot}" );
 				return;
 			}
 
-			var data = FileSystem.Data.ReadAllBytes( path ).ToArray();
+			byte[] data = FileSystem.Data.ReadAllBytes( path ).ToArray();
 			GbaSerialize.Load( Core, data );
 			GbaLog.Write( LogCategory.GBAState, LogLevel.Info, $"Suspend point loaded from slot {slot}" );
 		}

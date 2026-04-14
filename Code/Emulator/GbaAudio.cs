@@ -151,7 +151,7 @@ public partial class GbaAudio
 		_frameSeqStep = 0;
 		_totalCycles = 0;
 		_nextSampleCycle = CyclesPerSample;
-		_nextFrameSeqCycle = CyclesPerFrameSeq;
+		_nextFrameSeqCycle = 0;
 
 		Sound1CntL = Sound1CntH = Sound1CntX = 0;
 		Sound2CntL = Sound2CntH = 0;
@@ -291,36 +291,55 @@ public partial class GbaAudio
 		if ( target <= _totalCycles )
 			return;
 
-		_totalCycles = target;
+		while ( true )
+		{
+			long nextEvent = Math.Min( _nextSampleCycle, _nextFrameSeqCycle );
 
-		if ( _totalCycles < _nextFrameSeqCycle && _totalCycles < _nextSampleCycle )
+			if ( nextEvent > target )
+				break;
+
+			_totalCycles = nextEvent;
+
+			if ( _nextSampleCycle == nextEvent )
+				RunSampleEvent();
+
+			if ( _nextFrameSeqCycle == nextEvent )
+				RunFrameSequencerEvent();
+		}
+
+		_totalCycles = target;
+	}
+
+	private void RunSampleEvent()
+	{
+		_nextSampleCycle += CyclesPerSample;
+		WriteSample();
+	}
+
+	private void RunFrameSequencerEvent()
+	{
+		_nextFrameSeqCycle += CyclesPerFrameSeq;
+		ClockFrameSequencer();
+	}
+
+	private void WriteSample()
+	{
+		if ( SamplesWritten >= SamplesPerFrame )
 			return;
 
-		while ( _totalCycles >= _nextFrameSeqCycle )
+		short left;
+		short right;
+		if ( Enable )
+			MixSample( out left, out right );
+		else
 		{
-			_nextFrameSeqCycle += CyclesPerFrameSeq;
-			ClockFrameSequencer();
+			left = 0;
+			right = 0;
 		}
 
-		while ( _totalCycles >= _nextSampleCycle )
-		{
-			_nextSampleCycle += CyclesPerSample;
-			if ( SamplesWritten < SamplesPerFrame )
-			{
-				short l, r;
-				if ( Enable )
-					MixSample( out l, out r );
-				else
-				{
-					l = 0;
-					r = 0;
-				}
-
-				OutputBuffer[SamplesWritten * 2] = l;
-				OutputBuffer[SamplesWritten * 2 + 1] = r;
-				SamplesWritten++;
-			}
-		}
+		OutputBuffer[SamplesWritten * 2] = left;
+		OutputBuffer[SamplesWritten * 2 + 1] = right;
+		SamplesWritten++;
 	}
 
 	public void Serialize( BinaryWriter w )
