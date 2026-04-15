@@ -2,17 +2,16 @@
 
 This project includes the following third-party components. They are bundled for testing and demonstration purposes and are not required for the software to function.
 
-## Pong
+## Bloxorz
 
-- **Author:** zerodayarcade.com
-- **Source:** https://github.com/ZeroDayArcade/Pong-Homebrew-GBA
+- **Author:** Jacob Coughenour
+- **Source:** https://github.com/jacobcoughenour/bloxorz_gba
 - **License:** MIT
-- **Usage:** Included as `Assets/roms/Pong-Homebrew-GBA.gba` for basic emulator testing.
 
 <details>
 <summary>Full license text</summary>
 
-Copyright (c) 2023 zerodayarcade.com
+Copyright (c) 2026 Jacob Coughenour
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -34,12 +33,37 @@ SOFTWARE.
 
 </details>
 
+## Bloxorz
+
+- **Author:** Deft Spade
+- **Source:** https://github.com/Deft-Spade/Solar-Guard
+- **License:** GPL-3.0
+
+<details>
+<summary>Full license text</summary>
+
+Copyright (C) 2021 Deft Spade
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+</details>
+
 ## Game Boy Advance Test Suite
 
 - **Author:** Jeffrey Pfau (endrift)
 - **Source:** https://github.com/mgba-emu/suite
 - **License:** MIT
-- **Usage:** Included as `Assets/roms/suite.gba` for accuracy regression testing.
 
 <details>
 <summary>Full license text</summary>

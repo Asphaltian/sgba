@@ -28,8 +28,9 @@ code/Properties/*
 # ROM and BIOS files (copyrighted unless otherwise specified)
 Assets/roms/*
 Assets/bios/*
-!Assets/roms/Pong-Homebrew-GBA.gba
 !Assets/roms/suite.gba
+!Assets/roms/bloxorz.gba
+!Assets/roms/Solar_Guard_GBA_JAM_2021.gba
 
 # Exported / standalone games
 Exports/
