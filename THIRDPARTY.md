@@ -33,7 +33,7 @@ SOFTWARE.
 
 </details>
 
-## Bloxorz
+## Solar Guard
 
 - **Author:** Deft Spade
 - **Source:** https://github.com/Deft-Spade/Solar-Guard

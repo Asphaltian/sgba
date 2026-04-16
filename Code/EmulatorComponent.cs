@@ -1,5 +1,5 @@
+using System.Collections.Concurrent;
 using System.Threading;
-using System.Threading.Channels;
 using System.Threading.Tasks;
 using Sandbox.Rendering;
 
@@ -27,7 +27,7 @@ public sealed partial class EmulatorComponent : Component
 	private const float StickDeadzone = 0.3f;
 
 	private CancellationTokenSource _cts;
-	private Channel<FramePacket> _frameChannel;
+	private ConcurrentQueue<FramePacket> _frameQueue;
 	private SemaphoreSlim _frameSemaphore;
 	private int _inputKeys = AllKeysReleased;
 	private short[][] _audBufs;
@@ -73,6 +73,9 @@ public sealed partial class EmulatorComponent : Component
 	private void TearDownCore()
 	{
 		_cts?.Cancel();
+
+		try { _frameSemaphore?.Release(); } catch { }
+
 		_cts = null;
 
 		if ( Core?.Savedata != null && Core.Savedata.Data.Length > 0 && _savePath != null )
@@ -89,7 +92,7 @@ public sealed partial class EmulatorComponent : Component
 		Core?.Video?.DisposeGpu();
 		Core = null;
 		ScreenTexture = null;
-		_frameChannel = null;
+		_frameQueue = null;
 		_frameSemaphore?.Dispose();
 		_frameSemaphore = null;
 		_workerBufIdx = 0;
@@ -150,8 +153,8 @@ public sealed partial class EmulatorComponent : Component
 			for ( int i = 0; i < 4; i++ )
 				_audBufs[i] = new short[audioBufferSize];
 
-			_frameChannel = Channel.CreateBounded<FramePacket>( 2 );
-			_frameSemaphore = new SemaphoreSlim( 0, 4 );
+			_frameQueue = new ConcurrentQueue<FramePacket>();
+			_frameSemaphore = new SemaphoreSlim( 0, 1 );
 			_cts = new CancellationTokenSource();
 			GameTask.RunInThreadAsync( EmulationLoop );
 		}
@@ -221,18 +224,15 @@ public sealed partial class EmulatorComponent : Component
 				if ( core.Savedata.Clean() && core.Savedata.Data.Length > 0 )
 					saveData = core.Savedata.Data.ToArray();
 
-				await _frameChannel.Writer.WriteAsync( new FramePacket( audio, audioSamples, saveData ), token );
+				_frameQueue?.Enqueue( new FramePacket( audio, audioSamples, saveData ) );
+
+				await Task.Yield();
 			}
 		}
 		catch ( OperationCanceledException ) { }
 		catch ( Exception ex )
 		{
 			GbaLog.Write( LogCategory.GBA, LogLevel.Fatal, $"Emulation worker error: {ex.Message}\n{ex.StackTrace}" );
-			_frameChannel?.Writer.TryComplete( ex );
-		}
-		finally
-		{
-			_frameChannel?.Writer.TryComplete();
 		}
 	}
 
@@ -261,14 +261,15 @@ public sealed partial class EmulatorComponent : Component
 			while ( _frameDebt >= GbaFrameTime )
 			{
 				_frameDebt -= GbaFrameTime;
-				if ( _frameSemaphore.CurrentCount < 4 )
+
+				if ( _frameSemaphore.CurrentCount < 1 )
 					_frameSemaphore.Release();
 			}
 		}
 
 		bool hasFrame = false;
 
-		while ( _frameChannel != null && _frameChannel.Reader.TryRead( out FramePacket frame ) )
+		while ( _frameQueue != null && _frameQueue.TryDequeue( out FramePacket frame ) )
 		{
 			if ( _audioStream != null && frame.AudioSamples > 0 )
 				_audioStream.WriteData( frame.Audio.AsSpan( 0, frame.AudioSamples * 2 ) );

@@ -51,6 +51,7 @@ public partial class GbaVideo
 	private int _scaledWidth;
 	private int _scaledHeight;
 	private const int HistoryFrameCount = 7;
+	private const float ResponseTimeStrength = 0.333f;
 
 	private GpuBuffer<ScanlineState> _gpuScanlines;
 	private GpuBuffer<GpuSprite> _gpuSprites;
@@ -87,6 +88,14 @@ public partial class GbaVideo
 	public void SetReproduceClassicFeel( bool reproduceClassicFeel )
 	{
 		ReproduceClassicFeel = reproduceClassicFeel;
+		ResetOriginalHistory();
+	}
+
+	private void ResetOriginalHistory()
+	{
+		_historyHead = -1;
+		_historyValidCount = 0;
+		_frameCount = 0;
 	}
 
 	public void InitGpu( int scale = 1 )
@@ -113,21 +122,21 @@ public partial class GbaVideo
 		_gpuVram = new GpuBuffer<uint>( 96 * 1024 / 4 );
 		_gpuPalette = new GpuBuffer<uint>( 256 * GbaConstants.VisibleLines );
 
-		_bg0Tex = CreateNativeColorRT();
-		_bg1Tex = CreateNativeColorRT();
-		_bg2Tex = CreateNativeColorRT();
-		_bg3Tex = CreateNativeColorRT();
-		_objColorTex = CreateNativeColorRT();
-		_objFlagsTex = CreateNativeUintRT();
-		_windowTex = CreateNativeUintRT();
+		_bg0Tex = CreateNativeColorRT( gpuOnly: true );
+		_bg1Tex = CreateNativeColorRT( gpuOnly: true );
+		_bg2Tex = CreateNativeColorRT( gpuOnly: true );
+		_bg3Tex = CreateNativeColorRT( gpuOnly: true );
+		_objColorTex = CreateNativeColorRT( gpuOnly: true );
+		_objFlagsTex = CreateNativeUintRT( gpuOnly: true );
+		_windowTex = CreateNativeUintRT( gpuOnly: true );
 		_finalizeTex = CreateNativeColorRT( ImageFormat.RGBA16161616F );
-		_responseTimeTex = CreateNativeColorRT( ImageFormat.RGBA16161616F );
-		_lcdGridV2Tex = CreateScaledColorRT( ImageFormat.RGBA16161616F );
+		_responseTimeTex = CreateNativeColorRT( ImageFormat.RGBA16161616F, gpuOnly: true );
+		_lcdGridV2Tex = CreateScaledColorRT( ImageFormat.RGBA16161616F, gpuOnly: true );
 		_originalHistoryTex = new Texture[HistoryFrameCount];
 		for ( int i = 0; i < HistoryFrameCount; i++ )
-			_originalHistoryTex[i] = CreateNativeColorRT( ImageFormat.RGBA16161616F );
+			_originalHistoryTex[i] = CreateNativeColorRT( ImageFormat.RGBA16161616F, gpuOnly: true );
 
-		OutputTexture = CreateScaledColorRT( ImageFormat.RGBA8888, dynamic: true );
+		OutputTexture = CreateScaledColorRT( ImageFormat.RGBA8888, gpuOnly: true );
 
 		_csBgMode0 = new ComputeShader( "shaders/gba_bg_mode0.shader" );
 		_csBgMode2 = new ComputeShader( "shaders/gba_bg_mode2.shader" );
@@ -186,30 +195,24 @@ public partial class GbaVideo
 		RenderCommandList = null;
 	}
 
-	private Texture CreateRenderTarget( int width, int height, ImageFormat format, bool dynamic = false )
+	private Texture CreateRenderTarget( int width, int height, ImageFormat format, bool gpuOnly = false )
 	{
-		if ( dynamic )
-		{
-			return Texture.CreateRenderTarget()
-				.WithSize( width, height )
-				.WithFormat( format )
-				.WithUAVBinding()
-				.WithDynamicUsage()
-				.Create();
-		}
-
-		return Texture.CreateRenderTarget()
+		TextureBuilder builder = Texture.CreateRenderTarget()
 			.WithSize( width, height )
 			.WithFormat( format )
-			.WithUAVBinding()
-			.Create();
+			.WithUAVBinding();
+
+		if ( gpuOnly )
+			builder = builder.WithGPUOnlyUsage();
+
+		return builder.Create();
 	}
 
-	private Texture CreateNativeColorRT( ImageFormat format = ImageFormat.RGBA8888 ) => CreateRenderTarget( GbaConstants.ScreenWidth, GbaConstants.ScreenHeight, format );
+	private Texture CreateNativeColorRT( ImageFormat format = ImageFormat.RGBA8888, bool gpuOnly = false ) => CreateRenderTarget( GbaConstants.ScreenWidth, GbaConstants.ScreenHeight, format, gpuOnly );
 
-	private Texture CreateScaledColorRT( ImageFormat format = ImageFormat.RGBA8888, bool dynamic = false ) => CreateRenderTarget( _scaledWidth, _scaledHeight, format, dynamic );
+	private Texture CreateScaledColorRT( ImageFormat format = ImageFormat.RGBA8888, bool gpuOnly = false ) => CreateRenderTarget( _scaledWidth, _scaledHeight, format, gpuOnly );
 
-	private Texture CreateNativeUintRT() => CreateRenderTarget( GbaConstants.ScreenWidth, GbaConstants.ScreenHeight, ImageFormat.R32_UINT );
+	private Texture CreateNativeUintRT( bool gpuOnly = false ) => CreateRenderTarget( GbaConstants.ScreenWidth, GbaConstants.ScreenHeight, ImageFormat.R32_UINT, gpuOnly );
 
 	private void CaptureScanline( int y )
 	{
@@ -437,23 +440,24 @@ public partial class GbaVideo
 		Vector4 nativeSize = CreateSizeVector( GbaConstants.ScreenWidth, GbaConstants.ScreenHeight );
 		Vector4 scaledSize = CreateSizeVector( _scaledWidth, _scaledHeight );
 
-		cmd.Attributes.Set( "SourceSize", nativeSize );
-		cmd.Attributes.Set( "OriginalSize", nativeSize );
-		cmd.Attributes.Set( "OutputSize", nativeSize );
-		cmd.Attributes.Set( "Source", _finalizeTex );
-		BindOriginalHistoryTextures( cmd, _finalizeTex );
-		cmd.Attributes.Set( "OutputTex", _responseTimeTex );
-		cmd.Attributes.Set( "response_time", 0.333f );
-		cmd.DispatchCompute( _csResponseTime, GbaConstants.ScreenWidth, GbaConstants.ScreenHeight, 1 );
-		cmd.UavBarrier( _responseTimeTex );
-
-		Texture colorSource = _responseTimeTex;
+		Texture colorSource = _finalizeTex;
 		Vector4 colorSourceSize = nativeSize;
 
 		if ( ReproduceClassicFeel )
 		{
 			cmd.Attributes.Set( "SourceSize", nativeSize );
 			cmd.Attributes.Set( "OriginalSize", nativeSize );
+			cmd.Attributes.Set( "OutputSize", nativeSize );
+			cmd.Attributes.Set( "Source", _finalizeTex );
+			BindOriginalHistoryTextures( cmd, _finalizeTex );
+			cmd.Attributes.Set( "OutputTex", _responseTimeTex );
+			cmd.Attributes.Set( "response_time", ResponseTimeStrength );
+			cmd.DispatchCompute( _csResponseTime, GbaConstants.ScreenWidth, GbaConstants.ScreenHeight, 1 );
+			cmd.UavBarrier( _responseTimeTex );
+
+			colorSource = _responseTimeTex;
+			colorSourceSize = nativeSize;
+
 			cmd.Attributes.Set( "OutputSize", scaledSize );
 			cmd.Attributes.Set( "Source", _responseTimeTex );
 			cmd.Attributes.Set( "OutputTex", _lcdGridV2Tex );
@@ -476,6 +480,7 @@ public partial class GbaVideo
 
 			colorSource = _lcdGridV2Tex;
 			colorSourceSize = scaledSize;
+			_frameCount++;
 		}
 
 		cmd.Attributes.Set( "SourceSize", colorSourceSize );
@@ -487,12 +492,11 @@ public partial class GbaVideo
 		cmd.Attributes.Set( "darken_screen", 0.8f );
 		cmd.DispatchCompute( _csGbaColor, _scaledWidth, _scaledHeight, 1 );
 		cmd.UavBarrier( OutputTexture );
-		_frameCount++;
 	}
 
 	private void UpdateOriginalHistory()
 	{
-		if ( _frameCount <= 0 || _finalizeTex == null || _originalHistoryTex == null )
+		if ( !ReproduceClassicFeel || _frameCount <= 0 || _finalizeTex == null || _originalHistoryTex == null )
 			return;
 
 		int nextHistoryHead = ( _historyHead + 1 ) % HistoryFrameCount;

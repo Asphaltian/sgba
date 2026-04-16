@@ -4,8 +4,17 @@
 
 @inherits PanelComponent
 
-<root class="@(GamePreferences.DisplayWithSmallScreen ? "small-screen" : "")">
-	@{ Texture tex = EmulatorComponent.Current?.ScreenTexture; }
+@{
+	Texture tex = EmulatorComponent.Current?.ScreenTexture;
+	bool showBackdrop = EmulatorComponent.Current?.IsReady == true || !string.IsNullOrEmpty( EmulatorComponent.Current?.RomPath );
+	string rootClass = GamePreferences.DisplayWithSmallScreen ? "small-screen" : string.Empty;
+}
+
+<root class="@rootClass">
+	@if ( showBackdrop )
+	{
+		<div class="screen-backdrop" />
+	}
 	@if (tex != null)
 	{
 		<Image Texture=@tex class="screen" />
@@ -14,5 +23,11 @@
 
 @code
 {
-	protected override int BuildHash() => (int)(RealTime.Now * 60);
+	protected override int BuildHash()
+	{
+		EmulatorComponent emulator = EmulatorComponent.Current;
+		Texture texture = emulator?.ScreenTexture;
+		bool showBackdrop = emulator?.IsReady == true || !string.IsNullOrEmpty( emulator?.RomPath );
+		return HashCode.Combine( texture, showBackdrop, GamePreferences.DisplayWithSmallScreen );
+	}
 }

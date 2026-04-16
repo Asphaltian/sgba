@@ -9,9 +9,22 @@ GameScreen
 	z-index: 0;
 	align-items: center;
 	justify-content: center;
+	overflow: hidden;
+
+	.screen-backdrop
+	{
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 100%;
+		height: 100%;
+		background-color: #000;
+	}
 
 	.screen
 	{
+		position: relative;
+		z-index: 1;
 		width: 100%;
 		height: 100%;
 		background-size: contain;
