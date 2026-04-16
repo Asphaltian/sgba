@@ -4,7 +4,7 @@
 
 @inherits PanelComponent
 
-<root>
+<root class="@(GamePreferences.DisplayWithSmallScreen ? "small-screen" : "")">
 	@{ Texture tex = EmulatorComponent.Current?.ScreenTexture; }
 	@if (tex != null)
 	{

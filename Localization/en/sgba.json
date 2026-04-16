@@ -5,6 +5,12 @@
 	"library.noresults.title": "No Results",
 	"library.noresults.hint": "No games match",
 
+	"settings.button": "Settings",
+	"settings.title": "Settings",
+	"settings.back": "Back",
+	"settings.classicfeel": "Reproduce classic feel",
+	"settings.smallscreen": "Display with small screen",
+
 	"pause.continue": "Continue",
 	"pause.load": "Load Suspend Point",
 	"pause.create": "Create Suspend Point",

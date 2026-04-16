@@ -37,6 +37,7 @@ public sealed partial class EmulatorComponent : Component
 	private bool _paused;
 	private int _inputCooldown;
 	private string _stateBasePath;
+	private bool _appliedReproduceClassicFeel;
 
 	private readonly struct FramePacket( short[] audio, int audioSamples, byte[] saveData )
 	{
@@ -133,6 +134,7 @@ public sealed partial class EmulatorComponent : Component
 			IsReady = true;
 
 			Core.Video.InitGpu( scale: ComputeAutoScale() );
+			ApplyDisplaySettings();
 			ScreenTexture = Core.Video.OutputTexture;
 
 			if ( _camera.IsValid() && Core.Video.RenderCommandList != null )
@@ -238,6 +240,9 @@ public sealed partial class EmulatorComponent : Component
 	{
 		if ( !IsReady || Core == null )
 			return;
+
+		if ( _appliedReproduceClassicFeel != GamePreferences.ReproduceClassicFeel )
+			ApplyDisplaySettings();
 
 		PollInput();
 
@@ -385,6 +390,13 @@ public sealed partial class EmulatorComponent : Component
 	{
 		Core?.Reset();
 		GbaLog.Write( LogCategory.GBA, LogLevel.Info, "Emulator reset" );
+	}
+
+	public void ApplyDisplaySettings()
+	{
+		bool reproduceClassicFeel = GamePreferences.ReproduceClassicFeel;
+		Core?.Video?.SetReproduceClassicFeel( reproduceClassicFeel );
+		_appliedReproduceClassicFeel = reproduceClassicFeel;
 	}
 
 	protected override void OnDestroy()

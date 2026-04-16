@@ -1,4 +1,4 @@
-GameLibraryScreen
+LibraryPanel
 {
 	position: absolute;
 	left: 0;
@@ -76,6 +76,13 @@ GameLibraryScreen
 		gap: 8px;
 	}
 
+	.lib-header-actions
+	{
+		flex-direction: row;
+		align-items: center;
+		gap: 12px;
+	}
+
 	.lib-search-bar
 	{
 		flex-direction: row;
@@ -86,20 +93,63 @@ GameLibraryScreen
 		padding: 0 12px;
 		gap: 8px;
 		width: 280px;
-		transition: border-color 0.15s ease;
+		transition: border-color 0.15s ease, background-color 0.15s ease;
 
 		&.focused, &.pad-hover
 		{
 			border-color: rgba(79, 114, 245, 0.5);
+			background-color: rgba(255, 255, 255, 0.08);
+
+			.lib-search-icon
+			{
+				color: rgba(255, 255, 255, 0.92);
+			}
 		}
+	}
+
+	.lib-header-button
+	{
+		flex-direction: row;
+		align-items: center;
+		gap: 8px;
+		height: 40px;
+		padding: 0 14px;
+		background-color: rgba(255, 255, 255, 0.05);
+		border-radius: 6px;
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		color: rgba(255, 255, 255, 0.85);
+		cursor: pointer;
+		transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+
+		&:hover,
+		&.selected
+		{
+			border-color: rgba(79, 114, 245, 0.5);
+			background-color: rgba(79, 114, 245, 0.12);
+			color: white;
+			sound-in: ui.button.over;
+		}
+	}
+
+	.lib-header-button-icon
+	{
+		font-family: "Material Icons";
+		font-size: 18px;
+	}
+
+	.lib-header-button-label
+	{
+		font-size: 13px;
+		font-weight: 600;
 	}
 
 	.lib-search-icon
 	{
 		font-family: "Material Icons";
 		font-size: 16px;
-		color: rgba(255, 255, 255, 0.3);
+		color: rgba(255, 255, 255, 0.62);
 		flex-shrink: 0;
+		transition: color 0.15s ease;
 	}
 
 	.lib-search-input

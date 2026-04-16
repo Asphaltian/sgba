@@ -1,0 +1,200 @@
+SettingsPanel
+{
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: 100%;
+	height: 100%;
+	opacity: 0;
+	pointer-events: none;
+	font-family: Poppins;
+	transition: opacity 0.18s ease;
+	z-index: 4;
+
+	&.visible
+	{
+		opacity: 1;
+		pointer-events: all;
+
+		.settings-shell,
+		.settings-content
+		{
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+
+	.settings-bg
+	{
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 100%;
+		height: 100%;
+		background-color: rgba(11, 13, 20, 0.74);
+		backdrop-filter: blur(20px) brightness(0.50) saturate(0.86);
+	}
+
+	.settings-shell
+	{
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 100%;
+		height: 100%;
+		padding: 112px 48px 48px 48px;
+		flex-direction: column;
+		align-items: center;
+		justify-content: flex-start;
+		gap: 0;
+		opacity: 0;
+		transform: translateY(12px);
+		transition: opacity 0.2s ease, transform 0.2s ease;
+	}
+
+	.settings-topbar
+	{
+		position: absolute;
+		left: 48px;
+		top: 34px;
+		flex-direction: row;
+		align-items: center;
+		justify-content: flex-start;
+	}
+
+	.settings-back
+	{
+		height: 40px;
+		padding: 0 16px 0 12px;
+		flex-direction: row;
+		align-items: center;
+		gap: 8px;
+		border-radius: 999px;
+		background-color: rgba(255, 255, 255, 0.05);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		color: rgba(255, 255, 255, 0.85);
+		cursor: pointer;
+		transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+	}
+
+	.settings-back:hover,
+	.settings-back.selected
+	{
+		background-color: rgba(79, 114, 245, 0.16);
+		border-color: rgba(79, 114, 245, 0.5);
+		color: white;
+	}
+
+	.settings-back-icon
+	{
+		font-family: "Material Icons";
+		font-size: 17px;
+	}
+
+	.settings-back-label
+	{
+		font-size: 13px;
+		font-weight: 600;
+	}
+
+	.settings-content
+	{
+		width: 100%;
+		max-width: 560px;
+		flex-direction: column;
+		align-items: center;
+		gap: 20px;
+		opacity: 0;
+		transform: translateY(10px);
+		transition: opacity 0.2s ease 0.03s, transform 0.2s ease 0.03s;
+	}
+
+	.settings-title
+	{
+		font-family: Poppins;
+		font-size: 48px;
+		font-weight: 700;
+		color: rgba(255, 255, 255, 0.98);
+		text-align: center;
+	}
+
+	.settings-section
+	{
+		width: 100%;
+		flex-direction: column;
+		gap: 10px;
+	}
+
+	.settings-option
+	{
+		width: 100%;
+		flex-direction: row;
+		align-items: center;
+		gap: 18px;
+		padding: 0;
+		cursor: pointer;
+	}
+
+	.settings-option-box
+	{
+		width: 24px;
+		height: 24px;
+		flex-shrink: 0;
+		align-items: center;
+		justify-content: center;
+		border-radius: 0;
+		border: 2px solid rgba(255, 255, 255, 0.92);
+		background-color: transparent;
+		transition: border-color 0.14s ease, background-color 0.14s ease;
+	}
+
+	.settings-option-box.on
+	{
+		border-color: rgba(79, 114, 245, 0.92);
+		background-color: rgba(79, 114, 245, 0.92);
+	}
+
+	.settings-option-check
+	{
+		width: 7px;
+		height: 12px;
+		margin-top: -2px;
+		border-right: 2px solid white;
+		border-bottom: 2px solid white;
+		transform: rotate(40deg);
+	}
+
+	.settings-option-card
+	{
+		flex: 1;
+		min-width: 0;
+		height: 54px;
+		padding: 0 26px;
+		align-items: center;
+		border-radius: 0;
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		background-color: rgba(255, 255, 255, 0.05);
+		transition: background-color 0.14s ease, border-color 0.14s ease;
+	}
+
+	.settings-option-title
+	{
+		font-size: 18px;
+		font-weight: 600;
+		color: rgba(255, 255, 255, 0.92);
+		transition: color 0.14s ease;
+	}
+
+	.settings-option:hover .settings-option-card,
+	.settings-option.selected .settings-option-card
+	{
+		background-color: rgba(79, 114, 245, 0.12);
+		border-color: rgba(79, 114, 245, 0.5);
+	}
+
+	.settings-option:hover .settings-option-title,
+	.settings-option.selected .settings-option-title
+	{
+		color: rgba(255, 255, 255, 0.98);
+	}
+}

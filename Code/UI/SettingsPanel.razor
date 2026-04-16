@@ -1,0 +1,233 @@
+@using Sandbox.UI
+
+@namespace sGBA
+
+@inherits PanelComponent
+
+<root class="@(IsVisible ? "visible" : "")">
+	<div class="settings-bg" />
+
+	<div class="settings-shell">
+		<div class="settings-topbar">
+			<div class="@BackButtonClass" onmouseenter=@(() => SelectAction(BackAction)) onclick=@(() => Hide())>
+				<div class="settings-back-icon">arrow_back</div>
+				<div class="settings-back-label">#settings.back</div>
+			</div>
+		</div>
+
+		<div class="settings-content">
+			<div class="settings-title">#settings.title</div>
+
+			<div class="settings-section">
+				<div class="@ClassicFeelClass" onmouseenter=@(() => SelectAction(ClassicFeelAction)) onclick=@(() => ToggleClassicFeel())>
+					<div class="settings-option-box @(GamePreferences.ReproduceClassicFeel ? "on" : "off")">
+						@if (GamePreferences.ReproduceClassicFeel)
+						{
+							<div class="settings-option-check" />
+						}
+					</div>
+
+					<div class="settings-option-card">
+						<div class="settings-option-title">#settings.classicfeel</div>
+					</div>
+				</div>
+
+				<div class="@SmallScreenClass" onmouseenter=@(() => SelectAction(SmallScreenAction)) onclick=@(() => ToggleSmallScreen())>
+					<div class="settings-option-box @(GamePreferences.DisplayWithSmallScreen ? "on" : "off")">
+						@if (GamePreferences.DisplayWithSmallScreen)
+						{
+							<div class="settings-option-check" />
+						}
+					</div>
+
+					<div class="settings-option-card">
+						<div class="settings-option-title">#settings.smallscreen</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</root>
+
+@code
+{
+	private const int BackAction = 0;
+	private const int ClassicFeelAction = 1;
+	private const int SmallScreenAction = 2;
+	private const float StickDeadzone = 0.1f;
+	private const float RepeatDelay = 0.4f;
+	private const float RepeatRate = 0.08f;
+
+	public static SettingsPanel Current { get; private set; }
+	public bool IsVisible { get; private set; }
+
+	private int _selectedIndex = ClassicFeelAction;
+	private bool _useGamepad;
+	private bool _stickUp;
+	private bool _stickDown;
+	private float _upHoldTime;
+	private float _upNextRepeat;
+	private float _downHoldTime;
+	private float _downNextRepeat;
+
+	private string BackButtonClass => "settings-back" + (_useGamepad && _selectedIndex == BackAction ? " selected" : "");
+	private string ClassicFeelClass => "settings-option" + (_useGamepad && _selectedIndex == ClassicFeelAction ? " selected" : "");
+	private string SmallScreenClass => "settings-option" + (_useGamepad && _selectedIndex == SmallScreenAction ? " selected" : "");
+
+	protected override void OnTreeFirstBuilt()
+	{
+		Current = this;
+	}
+
+	public void Show(bool useGamepad = false)
+	{
+		Current = this;
+		IsVisible = true;
+		_selectedIndex = ClassicFeelAction;
+		_useGamepad = useGamepad;
+		Mouse.Visibility = useGamepad ? MouseVisibility.Hidden : MouseVisibility.Visible;
+		Sound.Play("ui.popup.message.open");
+		StateHasChanged();
+	}
+
+	public void Hide()
+	{
+		IsVisible = false;
+		Mouse.Visibility = _useGamepad ? MouseVisibility.Hidden : MouseVisibility.Visible;
+		LibraryPanel.Current?.FocusSettingsAction(_useGamepad);
+		Sound.Play("ui.popup.message.close");
+		StateHasChanged();
+	}
+
+	private void SelectAction(int action)
+	{
+		_selectedIndex = action;
+	}
+
+	private void ToggleClassicFeel(bool playSound = true)
+	{
+		if (playSound)
+			Sound.Play("ui.button.press");
+
+		GamePreferences.SetReproduceClassicFeel(!GamePreferences.ReproduceClassicFeel);
+		StateHasChanged();
+	}
+
+	private void ToggleSmallScreen(bool playSound = true)
+	{
+		if (playSound)
+			Sound.Play("ui.button.press");
+
+		GamePreferences.SetDisplayWithSmallScreen(!GamePreferences.DisplayWithSmallScreen);
+		StateHasChanged();
+	}
+
+	private void SetGamepadMode()
+	{
+		_useGamepad = true;
+		Mouse.Visibility = MouseVisibility.Hidden;
+	}
+
+	private void DetectMouseUsage()
+	{
+		if (Mouse.Delta.Length > 5)
+		{
+			_useGamepad = false;
+			Mouse.Visibility = MouseVisibility.Visible;
+		}
+	}
+
+	protected override void OnUpdate()
+	{
+		if (!IsVisible)
+			return;
+
+		DetectMouseUsage();
+		ReadStickEdges(out bool upEdge, out bool downEdge);
+		HandleNavRepeat("GBA_Up", upEdge, _stickUp, ref _upHoldTime, ref _upNextRepeat, NavigateUp);
+		HandleNavRepeat("GBA_Down", downEdge, _stickDown, ref _downHoldTime, ref _downNextRepeat, NavigateDown);
+
+		if (Input.Pressed("GBA_A"))
+		{
+			SetGamepadMode();
+			Sound.Play("ui.button.press");
+
+			if (_selectedIndex == BackAction)
+				Hide();
+			else if (_selectedIndex == ClassicFeelAction)
+				ToggleClassicFeel(playSound: false);
+			else
+				ToggleSmallScreen(playSound: false);
+		}
+
+		if (Input.Pressed("GBA_B"))
+		{
+			SetGamepadMode();
+			Sound.Play("ui.button.press");
+			Hide();
+		}
+	}
+
+	private void ReadStickEdges(out bool upEdge, out bool downEdge)
+	{
+		float stickY = Input.GetAnalog(InputAnalog.LeftStickY);
+
+		bool up = stickY < -StickDeadzone;
+		bool down = stickY > StickDeadzone;
+
+		upEdge = up && !_stickUp;
+		downEdge = down && !_stickDown;
+
+		_stickUp = up;
+		_stickDown = down;
+	}
+
+	private void HandleNavRepeat(string action, bool stickEdge, bool stickHeld,
+		ref float holdTime, ref float nextRepeat, Action navigate)
+	{
+		if (Input.Pressed(action) || stickEdge)
+		{
+			holdTime = 0;
+			nextRepeat = RepeatDelay;
+			navigate();
+		}
+		else if (Input.Down(action) || stickHeld)
+		{
+			holdTime += Time.Delta;
+			if (holdTime >= nextRepeat)
+			{
+				nextRepeat += RepeatRate;
+				navigate();
+			}
+		}
+		else
+		{
+			holdTime = 0;
+		}
+	}
+
+	private void NavigateUp()
+	{
+		SetGamepadMode();
+		if (_selectedIndex > BackAction)
+		{
+			_selectedIndex--;
+			Sound.Play("ui.button.over");
+		}
+	}
+
+	private void NavigateDown()
+	{
+		SetGamepadMode();
+		if (_selectedIndex < SmallScreenAction)
+		{
+			_selectedIndex++;
+			Sound.Play("ui.button.over");
+		}
+	}
+
+	protected override int BuildHash()
+	{
+		return HashCode.Combine(IsVisible, _selectedIndex, _useGamepad, GamePreferences.ReproduceClassicFeel, GamePreferences.DisplayWithSmallScreen);
+	}
+}

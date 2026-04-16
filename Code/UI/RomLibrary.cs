@@ -2,7 +2,7 @@ namespace sGBA;
 
 public static class RomLibrary
 {
-	private const string LibretroThumbnailBase = "https://thumbnails.libretro.com/Nintendo%20-%20Game%20Boy%20Advance/Named_Boxarts/";
+	private const string ThumbnailBaseUrl = "https://thumbnails.libretro.com/Nintendo%20-%20Game%20Boy%20Advance/Named_Boxarts/";
 
 	private static readonly Dictionary<string, string> MakerCodes = new( StringComparer.OrdinalIgnoreCase )
 	{
@@ -199,14 +199,27 @@ public static class RomLibrary
 		string baseName = System.IO.Path.GetFileNameWithoutExtension( fileName );
 		(string displayTitle, string region) = ParseNoIntroName( baseName );
 		(string internalTitle, string gameCode, string makerCode) = ReadRomHeader( fs, fullPath );
-
-		MakerCodes.TryGetValue( makerCode, out string publisher );
+		string publisher = ResolvePublisher( region, gameCode, makerCode );
 
 		string thumbUrl = string.IsNullOrEmpty( region )
 			? null
-			: $"{LibretroThumbnailBase}{baseName.Replace( "&", "_" ).Replace( " ", "%20" )}.png";
+			: $"{ThumbnailBaseUrl}{baseName.Replace( "&", "_" ).Replace( " ", "%20" )}.png";
 
-		return new RomEntry( fullPath, displayTitle, region, internalTitle, gameCode, publisher ?? string.Empty, thumbUrl, fs );
+		return new RomEntry( fullPath, displayTitle, region, internalTitle, gameCode, publisher, thumbUrl, fs );
+	}
+
+	private static string ResolvePublisher( string region, string gameCode, string makerCode )
+	{
+		if ( string.IsNullOrWhiteSpace( region ) )
+			return string.Empty;
+
+		if ( string.IsNullOrWhiteSpace( gameCode ) || string.Equals( gameCode, "0000", StringComparison.OrdinalIgnoreCase ) )
+			return string.Empty;
+
+		if ( string.IsNullOrWhiteSpace( makerCode ) || string.Equals( makerCode, "00", StringComparison.OrdinalIgnoreCase ) )
+			return string.Empty;
+
+		return MakerCodes.GetValueOrDefault( makerCode, string.Empty );
 	}
 
 	private static (string DisplayTitle, string Region) ParseNoIntroName( string baseName )

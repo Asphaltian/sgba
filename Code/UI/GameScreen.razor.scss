@@ -7,6 +7,8 @@ GameScreen
 	height: 100%;
 	pointer-events: none;
 	z-index: 0;
+	align-items: center;
+	justify-content: center;
 
 	.screen
 	{
@@ -15,5 +17,14 @@ GameScreen
 		background-size: contain;
 		background-repeat: no-repeat;
 		background-position: center;
+	}
+
+	&.small-screen
+	{
+		.screen
+		{
+			width: 50%;
+			height: 50%;
+		}
 	}
 }
