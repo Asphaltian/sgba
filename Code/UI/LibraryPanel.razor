@@ -287,6 +287,14 @@
 		}
 	}
 
+	private void SyncVisibilityWithEmulator()
+	{
+		var emu = EmulatorComponent.Current;
+		bool running = emu.IsValid() && emu.IsReady && !string.IsNullOrEmpty(emu.RomPath);
+		if (running && _isVisible) Hide();
+		else if (!running && !_isVisible) Show();
+	}
+
 	private void SelectHeaderAction(int headerSelection)
 	{
 		_headerSelection = headerSelection;
@@ -337,6 +345,8 @@
 
 	protected override void OnUpdate()
 	{
+		SyncVisibilityWithEmulator();
+
 		_pollTimer += Time.Delta;
 		if (_pollTimer >= PollInterval)
 		{

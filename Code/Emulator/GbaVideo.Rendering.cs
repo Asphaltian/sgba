@@ -499,7 +499,7 @@ public partial class GbaVideo
 		if ( !ReproduceClassicFeel || _frameCount <= 0 || _finalizeTex == null || _originalHistoryTex == null )
 			return;
 
-		int nextHistoryHead = ( _historyHead + 1 ) % HistoryFrameCount;
+		int nextHistoryHead = (_historyHead + 1) % HistoryFrameCount;
 		Texture historyTexture = _originalHistoryTex[nextHistoryHead];
 		if ( historyTexture == null )
 			return;

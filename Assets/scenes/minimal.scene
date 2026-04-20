@@ -213,21 +213,21 @@
       "__guid": "78efe1f4-2caf-4185-8754-49149b683127",
       "__version": 2,
       "Flags": 0,
-      "Name": "Network Helper",
+      "Name": "Wireless Adapter",
       "Position": "0,0,0",
       "Rotation": "0,0,0,1",
       "Scale": "1,1,1",
       "Tags": "",
       "Enabled": true,
-      "NetworkMode": 2,
+      "NetworkMode": 1,
       "NetworkFlags": 0,
       "NetworkOrphaned": 0,
       "NetworkTransmit": true,
       "OwnerTransfer": 1,
       "Components": [
         {
-          "__type": "Sandbox.NetworkHelper",
-          "__guid": "76d4649e-15b7-45c0-a26d-fb1ce0a734d5",
+          "__type": "sGBA.WirelessAdapterComponent",
+          "__guid": "92af48c8-c6ea-49ce-a3d5-90b1a086e196",
           "__enabled": true,
           "Flags": 0,
           "OnComponentDestroy": null,
@@ -235,10 +235,7 @@
           "OnComponentEnabled": null,
           "OnComponentFixedUpdate": null,
           "OnComponentStart": null,
-          "OnComponentUpdate": null,
-          "PlayerPrefab": null,
-          "SpawnPoints": [],
-          "StartServer": true
+          "OnComponentUpdate": null
         }
       ],
       "Children": []
@@ -266,13 +263,13 @@
       "CustomBounds": false
     },
     "GameObjectSystems": {
-      "Sandbox.MovieMaker.MovieRecorderSystem": {
-        "DisableClientRecording": false
-      },
       "Sandbox.Clutter.ClutterGridSystem": {
         "Storage": {
-          "$blob": "0464cc02-aab5-432e-be27-df598ba4979d"
+          "$blob": "d0670846-e405-40c6-a499-34ef0c05fda7"
         }
+      },
+      "Sandbox.MovieMaker.MovieRecorderSystem": {
+        "DisableClientRecording": false
       }
     }
   },
