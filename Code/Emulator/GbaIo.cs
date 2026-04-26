@@ -34,11 +34,18 @@ public class GbaIo
 
 	private static readonly int[] SioCyclesPerTransfer = { 31976, 8378, 5750, 3140 };
 
+	private const int WirelessPollCycles = 4096;
+
 	public long NextSioEvent => _sioCompletionCycle;
+
+	public GbaWirelessAdapter WirelessAdapter { get; }
+
+	private bool _sioPollingWireless;
 
 	public GbaIo( Gba gba )
 	{
 		Gba = gba;
+		WirelessAdapter = new GbaWirelessAdapter( gba );
 	}
 
 	public void Reset()
@@ -53,6 +60,8 @@ public class GbaIo
 		Array.Clear( _sioRegs );
 		_sioMode = SioModeGpio;
 		_sioCompletionCycle = long.MaxValue;
+		_sioPollingWireless = false;
+		WirelessAdapter.Reset();
 		PostFlg = 0;
 		_irqFireCycle = long.MaxValue;
 		_irqRearmDelay = 0;
@@ -161,7 +170,25 @@ public class GbaIo
 		if ( Gba.Cpu.Cycles < _sioCompletionCycle ) return;
 
 		int cyclesLate = (int)(Gba.Cpu.Cycles - _sioCompletionCycle);
+		long scheduled = _sioCompletionCycle;
 		_sioCompletionCycle = long.MaxValue;
+
+		if ( _sioPollingWireless )
+		{
+			_sioPollingWireless = false;
+			long elapsed = Math.Max( WirelessPollCycles, Gba.Cpu.Cycles - (scheduled - WirelessPollCycles) );
+			bool raise = WirelessAdapter.Update( (uint)elapsed, _sioCnt, out bool wroteSio, out ushort newSioCnt, out ushort newDataLo, out ushort newDataHi );
+			if ( wroteSio )
+			{
+				_sioRegs[0] = newDataLo;
+				_sioRegs[1] = newDataHi;
+				_sioCnt = newSioCnt;
+			}
+			ScheduleWirelessPoll();
+			if ( raise )
+				RaiseIrq( GbaIrq.Sio, cyclesLate );
+			return;
+		}
 
 		switch ( _sioMode )
 		{
@@ -184,12 +211,30 @@ public class GbaIo
 				break;
 			case SioModeNormal32:
 				_sioCnt &= unchecked((ushort)~0x0080);
-				_sioRegs[0] = 0;
-				_sioRegs[1] = 0;
+				if ( !WirelessAdapter.IsActive )
+				{
+					_sioRegs[0] = 0;
+					_sioRegs[1] = 0;
+				}
+				_sioCnt |= 0x0004;
 				if ( (_sioCnt & 0x4000) != 0 )
 					RaiseIrq( GbaIrq.Sio, cyclesLate );
+				ScheduleWirelessPoll();
 				break;
 		}
+	}
+
+	private void ScheduleWirelessPoll()
+	{
+		if ( _sioCompletionCycle != long.MaxValue || !WirelessAdapter.IsActive )
+			return;
+
+		var state = WirelessAdapter.SpiState;
+		if ( state != GbaWirelessAdapter.ComState.WaitEvent && state != GbaWirelessAdapter.ComState.WaitResponse )
+			return;
+
+		_sioCompletionCycle = Gba.Cpu.Cycles + WirelessPollCycles;
+		_sioPollingWireless = true;
 	}
 
 	public void TestKeypadIrq()
@@ -264,16 +309,21 @@ public class GbaIo
 
 	private void WriteRcnt( ushort value )
 	{
+		ushort oldRcnt = Rcnt;
 		Rcnt = (ushort)((Rcnt & 0x1FF) | (value & 0xC000));
 		SwitchSioMode();
 		if ( _sioMode == SioModeGpio )
 			Rcnt = (ushort)((Rcnt & 0xC000) | (value & 0x1FF));
 		else
 			Rcnt = (ushort)((Rcnt & 0xC00F) | (value & 0x1F0));
+
+		if ( _sioMode == SioModeGpio && (value & 0x20) != 0 && (oldRcnt & 0x02) == 0 )
+			WirelessAdapter.Reset();
 	}
 
 	private void WriteSioCnt( ushort value )
 	{
+		ushort oldSioCnt = _sioCnt;
 		value &= 0x7FFF;
 		if ( ((value ^ _sioCnt) & 0x3000) != 0 )
 		{
@@ -301,11 +351,31 @@ public class GbaIo
 				break;
 			case SioModeNormal8:
 			case SioModeNormal32:
-				if ( (value & 0x0001) != 0 )
-					Rcnt |= 0x0001;
-				if ( (value & 0x0080) != 0 && (_sioCnt & 0x0080) == 0 )
+				value = (ushort)((value & 0x7F8B) | (oldSioCnt & 0x0004));
+				if ( (value & 0x0081) == 0x0081 && _sioCompletionCycle == long.MaxValue )
+				{
+					uint sent = (uint)_sioRegs[0] | ((uint)_sioRegs[1] << 16);
+					uint reply = WirelessAdapter.Transfer( sent );
+					_sioRegs[0] = (ushort)(reply & 0xFFFF);
+					_sioRegs[1] = (ushort)(reply >> 16);
 					_sioCompletionCycle = Gba.Cpu.Cycles + SioTransferCycles();
-				value |= 0x0004;
+					_sioPollingWireless = false;
+				}
+
+				bool soRose = (value & 0x0008) != 0 && (oldSioCnt & 0x0008) == 0;
+				bool soFell = (value & 0x0008) == 0 && (oldSioCnt & 0x0008) != 0;
+				if ( (value & 0x1) != 0 )
+				{
+					if ( soRose ) value &= unchecked((ushort)~0x0004);
+				}
+				else
+				{
+					if ( soRose ) value |= 0x0004;
+					if ( soFell ) value &= unchecked((ushort)~0x0004);
+				}
+
+				if ( _sioMode == SioModeNormal32 )
+					ScheduleWirelessPoll();
 				break;
 		}
 

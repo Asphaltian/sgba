@@ -113,10 +113,10 @@ internal sealed class RomGridLayout
 public sealed class RomGrid : Sandbox.UI.Panel
 {
 	private readonly RomGridLayout _layout = new();
-	private readonly Dictionary<int, object> _cellData = new();
-	private readonly Dictionary<int, Sandbox.UI.Panel> _created = new();
-	private readonly List<int> _removals = new();
-	private readonly List<object> _items = new();
+	private readonly Dictionary<int, object> _cellData = [];
+	private readonly Dictionary<int, Sandbox.UI.Panel> _created = [];
+	private readonly List<int> _removals = [];
+	private readonly List<object> _items = [];
 
 	private IList _sourceList;
 	private int _sourceListCount;

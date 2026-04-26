@@ -88,7 +88,7 @@ public partial class GbaVideo
 				start = limit;
 		}
 
-		return (ushort)( end | ( start << 8 ) );
+		return (ushort)(end | (start << 8));
 	}
 
 	public void Reset()
@@ -240,6 +240,7 @@ public partial class GbaVideo
 			if ( (DispStat & 0x0008) != 0 )
 				Gba.Io.RaiseIrq( GbaIrq.VBlank );
 			Gba.Dma.OnVBlank();
+			Gba.Io.WirelessAdapter.FrameUpdate();
 
 			SnapshotVram();
 			CommitFrame();
