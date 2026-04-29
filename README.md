@@ -39,4 +39,4 @@ If you want to report bugs or request features, see [issues](https://github.com/
 
 This project is licensed under the [MIT License](LICENSE).
 
-Third-party components are listed in [THIRDPARTY.md](THIRDPARTY.md).
+Third-party ROMs are listed in [THIRDPARTY.md](THIRDPARTY.md).

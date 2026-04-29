@@ -1,6 +1,6 @@
-# Third-Party Components
+# Third-Party ROMs
 
-This project includes the following third-party components. They are bundled for testing and demonstration purposes and are not required for the software to function.
+This project includes the following third-party ROMs. They are bundled for testing and demonstration purposes and are not required for the software to function.
 
 ## Bloxorz
 
