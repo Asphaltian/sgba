@@ -160,6 +160,37 @@
           "Children": []
         },
         {
+          "__guid": "011e3eae-b827-482b-8179-b97b82eb1984",
+          "__version": 2,
+          "Flags": 0,
+          "Name": "Add ROMs Dialog",
+          "Position": "0,0,0",
+          "Rotation": "0,0,0,1",
+          "Scale": "1,1,1",
+          "Tags": "",
+          "Enabled": true,
+          "NetworkMode": 2,
+          "NetworkFlags": 0,
+          "NetworkOrphaned": 0,
+          "NetworkTransmit": true,
+          "OwnerTransfer": 1,
+          "Components": [
+            {
+              "__type": "sGBA.AddRomsDialog",
+              "__guid": "45777bf8-f0dd-430c-b4f6-fd055fa10d0f",
+              "__enabled": true,
+              "Flags": 0,
+              "OnComponentDestroy": null,
+              "OnComponentDisabled": null,
+              "OnComponentEnabled": null,
+              "OnComponentFixedUpdate": null,
+              "OnComponentStart": null,
+              "OnComponentUpdate": null
+            }
+          ],
+          "Children": []
+        },
+        {
           "__guid": "67dc7a18-1d8f-4055-8159-a30ad3517db8",
           "__version": 2,
           "Flags": 0,
@@ -433,13 +464,18 @@
       "CustomBounds": false
     },
     "GameObjectSystems": {
-      "Sandbox.MovieMaker.MovieRecorderSystem": {
-        "DisableClientRecording": false
+      "Sandbox.SelectionSetsSystem": {
+        "Data": {
+          "SelectionSets": []
+        }
       },
       "Sandbox.Clutter.ClutterGridSystem": {
         "Storage": {
-          "$blob": "bf7a7a65-6112-4f1e-beb6-d65fbf74dff6"
+          "$blob": "26375a2a-7e94-44c7-a19d-4ecc00b38b39"
         }
+      },
+      "Sandbox.MovieMaker.MovieRecorderSystem": {
+        "DisableClientRecording": false
       }
     }
   },

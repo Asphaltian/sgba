@@ -6,6 +6,11 @@
 	"library.noresults.hint": "No games match",
 	"library.join.button": "Join",
 
+	"addroms.card.label": "Add ROMs",
+	"addroms.title": "Adding ROMs",
+	"addroms.sub": "Drop your .gba files into the folder below.",
+	"addroms.dismiss": "Got it",
+
 	"sessionbrowser.title": "Join an Online Session",
 	"sessionbrowser.sub": "Lobbies hosting a Wireless Adapter game appear here.",
 	"sessionbrowser.loading": "Searching for sessions\u2026",

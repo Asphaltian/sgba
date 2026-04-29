@@ -5,7 +5,7 @@
   "Ident": "sgba",
   "Schema": 1,
   "IncludeSourceFiles": false,
-  "Resources": "/ui/*",
+  "Resources": "/ui/*\nroms/bloxorz.gba\nroms/Solar_Guard_GBA_JAM_2021.gba",
   "PackageReferences": [],
   "EditorReferences": null,
   "Mounts": null,

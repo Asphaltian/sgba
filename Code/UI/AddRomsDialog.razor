@@ -1,0 +1,93 @@
+@namespace sGBA
+
+@inherits PanelComponent
+
+<root class="@(IsVisible ? "visible" : "")">
+	<div class="dialog-bg" onclick=@Hide />
+
+	<div class="dialog">
+
+		<div class="dialog-header">
+			<div class="dialog-title">#addroms.title</div>
+			<div class="dialog-sub">#addroms.sub</div>
+		</div>
+
+		<div class="dialog-body">
+			<image src="/ui/add-roms.png" class="preview-image" />
+			<div class="rom-path">
+				<div class="rom-path-icon">folder</div>
+				<div class="rom-path-text">
+					<span class="rom-path-dim">…\sbox\data\asphaltian\sgba\</span><span class="rom-path-bright">roms</span>
+				</div>
+			</div>
+		</div>
+
+		<div class="dialog-actions">
+			<div class="action-btn confirm @(_input.UseGamepad ? "focus" : "")" onclick=@Hide>#addroms.dismiss</div>
+		</div>
+
+	</div>
+</root>
+
+@code
+{
+	public static AddRomsDialog Current { get; private set; }
+
+	public bool IsVisible { get; private set; }
+
+	private readonly GamepadFocusInput _input = new();
+	private bool _openedThisFrame;
+
+	protected override void OnTreeFirstBuilt()
+	{
+		Current = this;
+	}
+
+	public void Open(bool useGamepad = false)
+	{
+		IsVisible = true;
+		_openedThisFrame = true;
+		_input.Begin(useGamepad);
+		Sound.Play("ui.popup.message.open");
+		StateHasChanged();
+	}
+
+	public void Hide()
+	{
+		IsVisible = false;
+		_input.End();
+		Sound.Play("ui.popup.message.close");
+		StateHasChanged();
+	}
+
+	protected override void OnUpdate()
+	{
+		if (!IsVisible)
+			return;
+		if (new Game.Overlay().IsOpen)
+			return;
+
+		if (_openedThisFrame)
+		{
+			_openedThisFrame = false;
+			return;
+		}
+
+		if (Input.Pressed("GBA_A") || Input.Pressed("GBA_B"))
+		{
+			_input.ForceGamepadMode();
+			Hide();
+		}
+	}
+
+	protected override int BuildHash()
+	{
+		return HashCode.Combine(IsVisible, _input.UseGamepad);
+	}
+
+	protected override void OnDestroy()
+	{
+		if (Current == this)
+			Current = null;
+	}
+}

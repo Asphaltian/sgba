@@ -1,0 +1,166 @@
+$accent: rgba( 79, 114, 245, 1 );
+
+AddRomsDialog
+{
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: 100%;
+	height: 100%;
+	pointer-events: none;
+	font-family: Poppins;
+	z-index: 50;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0;
+	transition: opacity 0.2s ease;
+
+	&.visible
+	{
+		opacity: 1;
+		pointer-events: all;
+
+		.dialog-bg
+		{
+			opacity: 1;
+			backdrop-filter: blur(14px);
+		}
+
+		.dialog
+		{
+			opacity: 1;
+			transform: translateY( 0 ) scale( 1 );
+		}
+	}
+
+	.dialog-bg
+	{
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 100%;
+		height: 100%;
+		background-color: rgba( 0, 0, 0, 0.55 );
+		opacity: 0;
+		backdrop-filter: blur(0px);
+		transition: opacity 0.25s ease, backdrop-filter 0.3s ease;
+	}
+
+	.dialog
+	{
+		position: relative;
+		flex-direction: column;
+		min-width: 520px;
+		max-width: 580px;
+		background-color: rgba( 18, 21, 28, 0.96 );
+		border-radius: 8px;
+		box-shadow: 0px 24px 60px rgba( 0, 0, 0, 0.55 );
+		opacity: 0;
+		transform: translateY( 12px ) scale( 0.97 );
+		transition: opacity 0.22s ease, transform 0.22s ease;
+	}
+
+	.dialog-header
+	{
+		flex-direction: column;
+		gap: 4px;
+		padding: 22px 26px 4px 26px;
+
+		.dialog-title
+		{
+			font-size: 18px;
+			font-weight: 600;
+			color: white;
+		}
+
+		.dialog-sub
+		{
+			font-size: 12px;
+			color: rgba( 255, 255, 255, 0.55 );
+		}
+	}
+
+	.dialog-body
+	{
+		flex-direction: column;
+		gap: 16px;
+		padding: 18px 26px 22px 26px;
+	}
+
+	.preview-image
+	{
+		width: 100%;
+		height: 200px;
+		background-size: cover;
+		background-position: center;
+		background-repeat: no-repeat;
+		border-radius: 4px;
+	}
+
+	.rom-path
+	{
+		flex-direction: row;
+		align-items: center;
+		gap: 10px;
+		padding: 12px 14px;
+		background-color: rgba( 0, 0, 0, 0.25 );
+		border-radius: 4px;
+	}
+
+	.rom-path-icon
+	{
+		font-family: Material Icons;
+		font-size: 18px;
+		color: rgba( 79, 114, 245, 0.9 );
+		flex-shrink: 0;
+	}
+
+	.rom-path-text
+	{
+		font-size: 12px;
+		font-family: Consolas;
+		flex-shrink: 1;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+	}
+
+	.rom-path-dim
+	{
+		color: rgba( 255, 255, 255, 0.4 );
+	}
+
+	.rom-path-bright
+	{
+		color: white;
+		font-weight: 600;
+	}
+
+	.dialog-actions
+	{
+		flex-direction: row;
+		justify-content: flex-end;
+		gap: 8px;
+		padding: 12px 26px 18px 26px;
+	}
+
+	.action-btn
+	{
+		padding: 10px 22px;
+		font-size: 13px;
+		font-weight: 600;
+		border-radius: 4px;
+		cursor: pointer;
+		transition: background-color 0.12s ease;
+
+		&.confirm
+		{
+			color: white;
+			background-color: $accent;
+
+			&:hover { background-color: rgba( 130, 160, 255, 1 ); }
+			&.focus { background-color: rgba( 130, 160, 255, 1 ); }
+		}
+	}
+}
