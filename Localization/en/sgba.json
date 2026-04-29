@@ -27,7 +27,7 @@
 	"settings.classicfeel": "Reproduce classic feel",
 	"settings.classicfeel.hint": "Match the visual response of original GBA hardware.",
 	"settings.smallscreen": "Display with small screen",
-	"settings.smallscreen.hint": "Render the screen at its native, smaller size.",
+	"settings.smallscreen.hint": "Render the screen at a smaller size.",
 
 	"pause.continue": "Continue",
 	"pause.load": "Load Suspend Point",
