@@ -1,9 +1,7 @@
 namespace sGBA;
 
-public static class RomLibrary
+public static class GameLibrary
 {
-	private const string ThumbnailBaseUrl = "https://thumbnails.libretro.com/Nintendo%20-%20Game%20Boy%20Advance/Named_Boxarts/";
-
 	private static readonly Dictionary<string, string> MakerCodes = new( StringComparer.OrdinalIgnoreCase )
 	{
 		["01"] = "Nintendo",
@@ -163,16 +161,16 @@ public static class RomLibrary
 		["8P"] = "Sega",
 	};
 
-	public static List<RomEntry> Discover()
+	public static List<GameEntry> Discover()
 	{
-		List<RomEntry> entries = [];
+		List<GameEntry> entries = [];
 		CollectFrom( FileSystem.Mounted, entries );
 		CollectFrom( FileSystem.Data, entries );
 		entries.Sort( ( a, b ) => string.Compare( a.DisplayTitle, b.DisplayTitle, StringComparison.OrdinalIgnoreCase ) );
 		return entries;
 	}
 
-	public static HashSet<string> GetRomPaths()
+	public static HashSet<string> GetGamePaths()
 	{
 		var paths = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
 		try { foreach ( var f in FileSystem.Mounted.FindFile( "roms", "*.gba" ) ?? [] ) paths.Add( $"roms/{f}" ); } catch { }
@@ -180,7 +178,7 @@ public static class RomLibrary
 		return paths;
 	}
 
-	private static void CollectFrom( BaseFileSystem fs, List<RomEntry> entries )
+	private static void CollectFrom( BaseFileSystem fs, List<GameEntry> entries )
 	{
 		IEnumerable<string> found;
 		try { found = fs.FindFile( "roms", "*.gba" ) ?? []; }
@@ -188,24 +186,20 @@ public static class RomLibrary
 
 		foreach ( string fileName in found )
 		{
-			RomEntry entry = BuildEntry( fs, $"roms/{fileName}", fileName );
+			GameEntry entry = BuildEntry( fs, $"roms/{fileName}", fileName );
 			if ( entry is not null )
 				entries.Add( entry );
 		}
 	}
 
-	private static RomEntry BuildEntry( BaseFileSystem fs, string fullPath, string fileName )
+	private static GameEntry BuildEntry( BaseFileSystem fs, string fullPath, string fileName )
 	{
 		string baseName = System.IO.Path.GetFileNameWithoutExtension( fileName );
 		(string displayTitle, string region) = ParseNoIntroName( baseName );
-		(string internalTitle, string gameCode, string makerCode) = ReadRomHeader( fs, fullPath );
+		(string internalTitle, string gameCode, string makerCode) = ReadGameHeader( fs, fullPath );
 		string publisher = ResolvePublisher( region, gameCode, makerCode );
 
-		string thumbUrl = string.IsNullOrEmpty( region )
-			? null
-			: $"{ThumbnailBaseUrl}{baseName.Replace( "&", "_" ).Replace( " ", "%20" )}.png";
-
-		return new RomEntry( fullPath, displayTitle, region, internalTitle, gameCode, publisher, thumbUrl, fs );
+		return new GameEntry( fullPath, displayTitle, region, internalTitle, gameCode, publisher, baseName, fs );
 	}
 
 	private static string ResolvePublisher( string region, string gameCode, string makerCode )
@@ -234,7 +228,7 @@ public static class RomLibrary
 		return (displayTitle, region);
 	}
 
-	private static (string InternalTitle, string GameCode, string MakerCode) ReadRomHeader( BaseFileSystem fs, string path )
+	private static (string InternalTitle, string GameCode, string MakerCode) ReadGameHeader( BaseFileSystem fs, string path )
 	{
 		try
 		{

@@ -78,7 +78,7 @@ public sealed class NetworkManager : Component, IWirelessNetwork, Component.INet
 			Current = null;
 	}
 
-	public bool Host( RomEntry rom, SessionVisibility visibility )
+	public bool Host( GameEntry rom, SessionVisibility visibility )
 	{
 		if ( IsActive )
 			return false;
@@ -235,7 +235,7 @@ public sealed class NetworkManager : Component, IWirelessNetwork, Component.INet
 		}
 
 		EmulatorComponent.Current?.Restart( match.Path );
-		LibraryPanel.Current?.Hide();
+		HomeScreen.Current?.Hide();
 	}
 
 	[Rpc.Host( NetFlags.Reliable | NetFlags.SendImmediate )]
@@ -248,11 +248,11 @@ public sealed class NetworkManager : Component, IWirelessNetwork, Component.INet
 		caller.Kick( $"Missing ROM for '{romTitle}'." );
 	}
 
-	private static RomEntry FindLocalRomMatch( string sha1, string gameCode )
+	private static GameEntry FindLocalRomMatch( string sha1, string gameCode )
 	{
-		List<RomEntry> roms;
-		try { roms = RomLibrary.Discover(); }
-		catch ( Exception e ) { Log.Warning( $"[sGBA] RomLibrary.Discover failed: {e.Message}" ); return null; }
+		List<GameEntry> roms;
+		try { roms = GameLibrary.Discover(); }
+		catch ( Exception e ) { Log.Warning( $"[sGBA] GameLibrary.Discover failed: {e.Message}" ); return null; }
 
 		if ( !string.IsNullOrEmpty( sha1 ) )
 		{
@@ -285,7 +285,7 @@ public sealed class NetworkManager : Component, IWirelessNetwork, Component.INet
 		_ => LobbyPrivacy.Public
 	};
 
-	private static string ComputeRomSha1( RomEntry rom )
+	private static string ComputeRomSha1( GameEntry rom )
 	{
 		try
 		{

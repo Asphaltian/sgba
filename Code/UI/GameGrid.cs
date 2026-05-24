@@ -2,7 +2,7 @@ using System.Collections;
 
 namespace sGBA;
 
-internal sealed class RomGridLayout
+internal sealed class GameGridLayout
 {
 	private float _itemWidth = 100f;
 	private float _itemHeight = 100f;
@@ -110,9 +110,9 @@ internal sealed class RomGridLayout
 	public float ViewportHeight( Sandbox.UI.Box box ) => box.Rect.Height;
 }
 
-public sealed class RomGrid : Sandbox.UI.Panel
+public sealed class GameGrid : Sandbox.UI.Panel
 {
-	private readonly RomGridLayout _layout = new();
+	private readonly GameGridLayout _layout = new();
 	private readonly Dictionary<int, object> _cellData = [];
 	private readonly Dictionary<int, Sandbox.UI.Panel> _created = [];
 	private readonly List<int> _removals = [];
@@ -196,7 +196,7 @@ public sealed class RomGrid : Sandbox.UI.Panel
 		}
 	}
 
-	public RomGrid()
+	public GameGrid()
 	{
 		Style.Position = Sandbox.UI.PositionMode.Relative;
 		Style.Overflow = Sandbox.UI.OverflowMode.Scroll;

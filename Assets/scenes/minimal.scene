@@ -129,10 +129,10 @@
       ],
       "Children": [
         {
-          "__guid": "7ac65c49-daa0-40c2-aaa2-8da243c93f03",
+          "__guid": "7c78c5be-1fb6-441a-b88e-cf2a9a931cae",
           "__version": 2,
           "Flags": 0,
-          "Name": "Library Panel",
+          "Name": "Input Hints",
           "Position": "0,0,0",
           "Rotation": "0,0,0,1",
           "Scale": "1,1,1",
@@ -145,8 +145,70 @@
           "OwnerTransfer": 1,
           "Components": [
             {
-              "__type": "sGBA.LibraryPanel",
-              "__guid": "d06cd5fc-19cb-4dcf-bd5c-4a04cdba8b1e",
+              "__type": "sGBA.InputHints",
+              "__guid": "bdcdeaa7-127e-456c-833f-6466873ca01a",
+              "__enabled": true,
+              "Flags": 0,
+              "OnComponentDestroy": null,
+              "OnComponentDisabled": null,
+              "OnComponentEnabled": null,
+              "OnComponentFixedUpdate": null,
+              "OnComponentStart": null,
+              "OnComponentUpdate": null
+            }
+          ],
+          "Children": []
+        },
+        {
+          "__guid": "7ac65c49-daa0-40c2-aaa2-8da243c93f03",
+          "__version": 2,
+          "Flags": 0,
+          "Name": "Home Screen",
+          "Position": "0,0,0",
+          "Rotation": "0,0,0,1",
+          "Scale": "1,1,1",
+          "Tags": "",
+          "Enabled": true,
+          "NetworkMode": 2,
+          "NetworkFlags": 0,
+          "NetworkOrphaned": 0,
+          "NetworkTransmit": true,
+          "OwnerTransfer": 1,
+          "Components": [
+            {
+              "__type": "sGBA.HomeScreen",
+              "__guid": "e4109d12-6804-46ae-a8d7-9e7eb8dd2573",
+              "__enabled": true,
+              "Flags": 0,
+              "OnComponentDestroy": null,
+              "OnComponentDisabled": null,
+              "OnComponentEnabled": null,
+              "OnComponentFixedUpdate": null,
+              "OnComponentStart": null,
+              "OnComponentUpdate": null
+            }
+          ],
+          "Children": []
+        },
+        {
+          "__guid": "60b372f3-5f26-49de-8fa0-e4cb94830648",
+          "__version": 2,
+          "Flags": 0,
+          "Name": "Details Modal",
+          "Position": "0,0,0",
+          "Rotation": "0,0,0,1",
+          "Scale": "1,1,1",
+          "Tags": "",
+          "Enabled": true,
+          "NetworkMode": 2,
+          "NetworkFlags": 0,
+          "NetworkOrphaned": 0,
+          "NetworkTransmit": true,
+          "OwnerTransfer": 1,
+          "Components": [
+            {
+              "__type": "sGBA.DetailsModal",
+              "__guid": "ee4a959a-34bc-49e5-bfa3-c80ef7196975",
               "__enabled": true,
               "Flags": 0,
               "OnComponentDestroy": null,
@@ -163,7 +225,7 @@
           "__guid": "011e3eae-b827-482b-8179-b97b82eb1984",
           "__version": 2,
           "Flags": 0,
-          "Name": "Add ROMs Dialog",
+          "Name": "Add Games Modal",
           "Position": "0,0,0",
           "Rotation": "0,0,0,1",
           "Scale": "1,1,1",
@@ -176,70 +238,8 @@
           "OwnerTransfer": 1,
           "Components": [
             {
-              "__type": "sGBA.AddRomsDialog",
-              "__guid": "45777bf8-f0dd-430c-b4f6-fd055fa10d0f",
-              "__enabled": true,
-              "Flags": 0,
-              "OnComponentDestroy": null,
-              "OnComponentDisabled": null,
-              "OnComponentEnabled": null,
-              "OnComponentFixedUpdate": null,
-              "OnComponentStart": null,
-              "OnComponentUpdate": null
-            }
-          ],
-          "Children": []
-        },
-        {
-          "__guid": "67dc7a18-1d8f-4055-8159-a30ad3517db8",
-          "__version": 2,
-          "Flags": 0,
-          "Name": "Host Dialog",
-          "Position": "0,0,0",
-          "Rotation": "0,0,0,1",
-          "Scale": "1,1,1",
-          "Tags": "",
-          "Enabled": true,
-          "NetworkMode": 2,
-          "NetworkFlags": 0,
-          "NetworkOrphaned": 0,
-          "NetworkTransmit": true,
-          "OwnerTransfer": 1,
-          "Components": [
-            {
-              "__type": "sGBA.HostDialog",
-              "__guid": "4640a717-7dfc-4cb0-8f4b-5c9b5f3b25bd",
-              "__enabled": true,
-              "Flags": 0,
-              "OnComponentDestroy": null,
-              "OnComponentDisabled": null,
-              "OnComponentEnabled": null,
-              "OnComponentFixedUpdate": null,
-              "OnComponentStart": null,
-              "OnComponentUpdate": null
-            }
-          ],
-          "Children": []
-        },
-        {
-          "__guid": "5b21cf04-9ad3-4f7e-b0a3-7a8b4e2f1c01",
-          "__version": 2,
-          "Flags": 0,
-          "Name": "Session Browser",
-          "Position": "0,0,0",
-          "Rotation": "0,0,0,1",
-          "Scale": "1,1,1",
-          "Tags": "",
-          "Enabled": true,
-          "NetworkMode": 2,
-          "NetworkFlags": 0,
-          "NetworkOrphaned": 0,
-          "NetworkTransmit": true,
-          "OwnerTransfer": 1,
-          "Components": [
-            {
-              "__type": "sGBA.SessionBrowser",
-              "__guid": "9c3e72b8-1f4d-44d7-a6b5-2e89c0f3e771",
+              "__type": "sGBA.AddGamesModal",
+              "__guid": "ed272e7b-57dd-4772-8346-3a9e22d8ec00",
               "__enabled": true,
               "Flags": 0,
               "OnComponentDestroy": null,
@@ -256,7 +256,7 @@
           "__guid": "b33ea2f1-6c92-497c-86cb-e0221e45859e",
           "__version": 2,
           "Flags": 0,
-          "Name": "Settings Panel",
+          "Name": "Settings Modal",
           "Position": "0,0,0",
           "Rotation": "0,0,0,1",
           "Scale": "1,1,1",
@@ -269,39 +269,8 @@
           "OwnerTransfer": 1,
           "Components": [
             {
-              "__type": "sGBA.SettingsPanel",
-              "__guid": "3d82184c-92f1-49dc-8d1f-ae751fece6b5",
-              "__enabled": true,
-              "Flags": 0,
-              "OnComponentDestroy": null,
-              "OnComponentDisabled": null,
-              "OnComponentEnabled": null,
-              "OnComponentFixedUpdate": null,
-              "OnComponentStart": null,
-              "OnComponentUpdate": null
-            }
-          ],
-          "Children": []
-        },
-        {
-          "__guid": "21a82f1d-d8c2-43c8-a942-cf716873dd65",
-          "__version": 2,
-          "Flags": 0,
-          "Name": "Players Panel",
-          "Position": "0,0,0",
-          "Rotation": "0,0,0,1",
-          "Scale": "1,1,1",
-          "Tags": "",
-          "Enabled": true,
-          "NetworkMode": 2,
-          "NetworkFlags": 0,
-          "NetworkOrphaned": 0,
-          "NetworkTransmit": true,
-          "OwnerTransfer": 1,
-          "Components": [
-            {
-              "__type": "sGBA.PlayersPanel",
-              "__guid": "d7e8fec6-591a-4498-a4ee-34e9d5bd7647",
+              "__type": "sGBA.SettingsModal",
+              "__guid": "47024fee-2b96-45ee-9934-01c8db33fb89",
               "__enabled": true,
               "Flags": 0,
               "OnComponentDestroy": null,
@@ -464,18 +433,15 @@
       "CustomBounds": false
     },
     "GameObjectSystems": {
+      "Sandbox.Clutter.ClutterGridSystem": {
+        "Storage": {
+          "$blob": "0411ae63-15f5-47cb-a4e1-d460d6c90e9e"
+        }
+      },
       "Sandbox.SelectionSetsSystem": {
         "Data": {
           "SelectionSets": []
         }
-      },
-      "Sandbox.Clutter.ClutterGridSystem": {
-        "Storage": {
-          "$blob": "26375a2a-7e94-44c7-a19d-4ecc00b38b39"
-        }
-      },
-      "Sandbox.MovieMaker.MovieRecorderSystem": {
-        "DisableClientRecording": false
       }
     }
   },

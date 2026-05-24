@@ -11,7 +11,7 @@
 				@for (int i = 0; i < MenuItems.Length; i++)
 				{
 					var idx = i;
-					<div class="menu-item @(idx == _selectedIndex ? "selected" : "")" onmouseenter=@(() => SelectItem(idx)) onclick=@(() => ActivateItem(idx))>
+					<div class="menu-item @(idx == _selectedIndex ? "selected" : "")" onmouseenter=@(() => SelectItem(idx)) onclick=@(() => ActivateItemWithMouse(idx))>
 						@MenuItems[idx]
 					</div>
 				}
@@ -21,7 +21,7 @@
 				@for (int i = 1; i <= GbaSerialize.SlotCount; i++)
 				{
 					var slot = i;
-					<div class="slot @(slot == _highlightedSlot && HasSlotPanel ? "highlighted" : "")" onmouseenter=@(() => _highlightedSlot = slot) onclick=@(() => ActivateSlot(slot))>
+					<div class="slot @(slot == _highlightedSlot && HasSlotPanel ? "highlighted" : "")" onmouseenter=@(() => SelectSlotWithMouse(slot)) onclick=@(() => ActivateSlotWithMouse(slot))>
 						<div class="slot-preview">
 							@if (SlotTextures[slot - 1] != null)
 							{
@@ -49,8 +49,8 @@
 		<div class="confirm-box">
 			<div class="dialog-message">#pause.confirm.message</div>
 			<div class="confirm-buttons">
-				<div class="confirm-btn @(_confirmSelection == 0 ? "selected" : "")" onmouseenter=@(() => _confirmSelection = 0) onclick=@(() => ConfirmOverwrite())>#pause.confirm.yes</div>
-				<div class="confirm-btn @(_confirmSelection == 1 ? "selected" : "")" onmouseenter=@(() => _confirmSelection = 1) onclick=@(() => CancelOverwrite())>#pause.confirm.no</div>
+				<div class="confirm-btn @(_confirmSelection == 0 ? "selected" : "")" onmouseenter=@(() => SelectConfirmWithMouse(0)) onclick=@(() => ConfirmOverwriteWithMouse())>#pause.confirm.yes</div>
+				<div class="confirm-btn @(_confirmSelection == 1 ? "selected" : "")" onmouseenter=@(() => SelectConfirmWithMouse(1)) onclick=@(() => CancelOverwriteWithMouse())>#pause.confirm.no</div>
 			</div>
 		</div>
 	</div>
@@ -69,27 +69,17 @@
 	private const int MenuCreate = 2;
 	private const int MenuControls = 3;
 	private const int MenuReset = 4;
-	private const int MenuGoToLibrary = 5;
-	private const int MenuLeaveSession = 6;
+	private const int MenuGoToHome = 5;
 
-	private readonly string[] MenuItemsSolo =
+	private readonly string[] MenuItems =
 	[
 		"#pause.continue",
 		"#pause.load",
 		"#pause.create",
 		"#pause.controls",
 		"#pause.reset",
-		"#pause.library"
+		"#pause.home"
 	];
-
-	private readonly string[] MenuItemsInSession =
-	[
-		"#pause.continue",
-		"#pause.controls",
-		"#pause.leavesession"
-	];
-
-	private string[] MenuItems => NetworkManager.Current?.IsActive == true ? MenuItemsInSession : MenuItemsSolo;
 
 	public bool IsVisible { get; private set; }
 	private int _selectedIndex;
@@ -110,7 +100,7 @@
 	private int _pendingOverwriteSlot;
 	private bool _showSavingDialog;
 
-	private readonly GamepadFocusInput _input = new();
+	private readonly FocusInput _input = new();
 
 	protected override void OnUpdate()
 	{
@@ -247,10 +237,41 @@
 
 	private void SelectItem(int index)
 	{
+		_input.ForceMouseMode();
 		_selectedIndex = index;
 		_inSlotPanel = false;
 		if (HasSlotPanel)
 			_highlightedSlot = 1;
+	}
+
+	private void SelectSlotWithMouse(int slot)
+	{
+		_input.ForceMouseMode();
+		_highlightedSlot = slot;
+	}
+
+	private void ActivateSlotWithMouse(int slot)
+	{
+		_input.ForceMouseMode();
+		ActivateSlot(slot);
+	}
+
+	private void SelectConfirmWithMouse(int index)
+	{
+		_input.ForceMouseMode();
+		_confirmSelection = index;
+	}
+
+	private void ConfirmOverwriteWithMouse()
+	{
+		_input.ForceMouseMode();
+		ConfirmOverwrite();
+	}
+
+	private void CancelOverwriteWithMouse()
+	{
+		_input.ForceMouseMode();
+		CancelOverwrite();
 	}
 
 	private void ActivateItem(int index)
@@ -274,19 +295,21 @@
 				EmulatorComponent.Current.ResetEmulator();
 				Resume();
 				break;
-			case "#pause.library":
+			case "#pause.home":
 				IsVisible = false;
 				_selectedIndex = MenuContinue;
 				_inSlotPanel = false;
 				Mouse.Visibility = MouseVisibility.Hidden;
 				Sound.Play("ui.popup.message.close");
-				LibraryPanel.Current?.Show();
-				break;
-			case "#pause.leavesession":
-				NetworkManager.Current?.Leave();
-				Resume();
+				HomeScreen.Current?.Show();
 				break;
 		}
+	}
+
+	private void ActivateItemWithMouse(int index)
+	{
+		_input.ForceMouseMode();
+		ActivateItem(index);
 	}
 
 	private void ActivateSlot(int slot)

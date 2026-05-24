@@ -1,6 +1,6 @@
 namespace sGBA;
 
-public sealed class GamepadFocusInput
+public sealed class FocusInput
 {
 	public const float DefaultStickDeadzone = 0.5f;
 	public const float MouseWakeThreshold = 5f;
@@ -46,8 +46,9 @@ public sealed class GamepadFocusInput
 
 	public void End()
 	{
+		var wasGamepad = UseGamepad;
 		ResetTransientState();
-		Mouse.Visibility = MouseVisibility.Visible;
+		Mouse.Visibility = wasGamepad ? MouseVisibility.Hidden : MouseVisibility.Visible;
 	}
 
 	public StickEdges Tick( bool extraGamepadInput = false )
@@ -114,6 +115,14 @@ public sealed class GamepadFocusInput
 		if ( UseGamepad ) return;
 		UseGamepad = true;
 		Mouse.Visibility = MouseVisibility.Hidden;
+	}
+
+	public void ForceMouseMode()
+	{
+		if ( !UseGamepad ) return;
+		UseGamepad = false;
+		Mouse.Visibility = MouseVisibility.Visible;
+		ResetTransientState();
 	}
 
 	private void UpdateInputMode( bool gamepadInputDetected )

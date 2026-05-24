@@ -5,8 +5,9 @@
 @inherits PanelComponent
 
 @{
-	Texture tex = EmulatorComponent.Current?.ScreenTexture;
-	bool showBackdrop = EmulatorComponent.Current?.IsReady == true || !string.IsNullOrEmpty( EmulatorComponent.Current?.RomPath );
+	bool homeVisible = HomeScreen.Current?.IsVisible == true;
+	Texture tex = homeVisible ? null : EmulatorComponent.Current?.ScreenTexture;
+	bool showBackdrop = !homeVisible && (EmulatorComponent.Current?.IsReady == true || !string.IsNullOrEmpty( EmulatorComponent.Current?.RomPath ));
 	string rootClass = GamePreferences.DisplayWithSmallScreen ? "small-screen" : string.Empty;
 }
 
@@ -23,11 +24,30 @@
 
 @code
 {
+	public static GameScreen Current { get; private set; }
+
+	protected override void OnTreeFirstBuilt()
+	{
+		Current = this;
+	}
+
+	protected override void OnDestroy()
+	{
+		if ( Current == this )
+			Current = null;
+	}
+
+	public void Refresh()
+	{
+		StateHasChanged();
+	}
+
 	protected override int BuildHash()
 	{
 		EmulatorComponent emulator = EmulatorComponent.Current;
-		Texture texture = emulator?.ScreenTexture;
-		bool showBackdrop = emulator?.IsReady == true || !string.IsNullOrEmpty( emulator?.RomPath );
-		return HashCode.Combine( texture, showBackdrop, GamePreferences.DisplayWithSmallScreen );
+		bool homeVisible = HomeScreen.Current?.IsVisible == true;
+		Texture texture = homeVisible ? null : emulator?.ScreenTexture;
+		bool showBackdrop = !homeVisible && (emulator?.IsReady == true || !string.IsNullOrEmpty( emulator?.RomPath ));
+		return HashCode.Combine( texture, showBackdrop, homeVisible, GamePreferences.DisplayWithSmallScreen );
 	}
 }

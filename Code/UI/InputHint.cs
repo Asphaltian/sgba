@@ -6,8 +6,8 @@ public class InputHint : Panel
 {
 	private Texture _lastGlyph;
 
-	public string Action { get; set; }
-	public InputGlyphSize GlyphSize { get; set; } = InputGlyphSize.Small;
+	[Parameter] public string Action { get; set; }
+	[Parameter] public InputGlyphSize GlyphSize { get; set; } = InputGlyphSize.Small;
 
 	public override void Tick()
 	{
