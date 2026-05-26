@@ -251,8 +251,8 @@ public sealed class NetworkManager : Component, IWirelessNetwork, Component.INet
 	private static GameEntry FindLocalRomMatch( string sha1, string gameCode )
 	{
 		List<GameEntry> roms;
-		try { roms = GameLibrary.Discover(); }
-		catch ( Exception e ) { Log.Warning( $"[sGBA] GameLibrary.Discover failed: {e.Message}" ); return null; }
+		try { roms = GameEntry.Discover(); }
+		catch ( Exception e ) { Log.Warning( $"[sGBA] GameEntry.Discover failed: {e.Message}" ); return null; }
 
 		if ( !string.IsNullOrEmpty( sha1 ) )
 		{

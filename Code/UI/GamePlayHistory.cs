@@ -2,7 +2,7 @@ namespace sGBA;
 
 public static class GamePlayHistory
 {
-	private const string HistoryPath = "game-play-history.txt";
+	private const string CookieKey = "sgba.game_play_history";
 	private static readonly Dictionary<string, long> LastPlayedByPath = new( StringComparer.OrdinalIgnoreCase );
 	private static bool _loaded;
 
@@ -30,43 +30,19 @@ public static class GamePlayHistory
 		_loaded = true;
 		LastPlayedByPath.Clear();
 
-		try
+		var saved = Game.Cookies?.Get<Dictionary<string, long>>( CookieKey, null );
+		if ( saved is null )
+			return;
+
+		foreach ( var (path, value) in saved )
 		{
-			if ( !FileSystem.Data.FileExists( HistoryPath ) )
-				return;
-
-			string text = System.Text.Encoding.UTF8.GetString( FileSystem.Data.ReadAllBytes( HistoryPath ).ToArray() );
-			foreach ( string line in text.Split( ['\r', '\n'], StringSplitOptions.RemoveEmptyEntries ) )
-			{
-				int separator = line.IndexOf( '\t' );
-				if ( separator <= 0 )
-					continue;
-
-				string escapedPath = line[..separator];
-				string valueText = line[(separator + 1)..];
-				if ( !long.TryParse( valueText, out long value ) )
-					continue;
-
-				LastPlayedByPath[Uri.UnescapeDataString( escapedPath )] = value;
-			}
-		}
-		catch
-		{
-			LastPlayedByPath.Clear();
+			if ( !string.IsNullOrWhiteSpace( path ) )
+				LastPlayedByPath[path] = value;
 		}
 	}
 
 	private static void Save()
 	{
-		try
-		{
-			string text = string.Join( "\n", LastPlayedByPath
-				.OrderByDescending( pair => pair.Value )
-				.Select( pair => $"{Uri.EscapeDataString( pair.Key )}\t{pair.Value}" ) );
-			FileSystem.Data.WriteAllBytes( HistoryPath, System.Text.Encoding.UTF8.GetBytes( text ) );
-		}
-		catch
-		{
-		}
+		Game.Cookies?.Set( CookieKey, LastPlayedByPath );
 	}
 }

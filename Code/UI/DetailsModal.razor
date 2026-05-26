@@ -75,7 +75,7 @@
 			var developer = FirstValue(_metadata?.Developer);
 			if (developer is not null) yield return new InfoRow("#details.info.developer", developer);
 
-			var publisher = FirstValue(_metadata?.Publisher, _game.Publisher);
+			var publisher = FirstValue(_metadata?.Publisher);
 			if (publisher is not null) yield return new InfoRow("#details.info.publisher", publisher);
 
 			var releaseDate = FirstValue(FormatReleaseDate(_metadata));

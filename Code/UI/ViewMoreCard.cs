@@ -24,7 +24,7 @@ public sealed class ViewMoreCard : Panel
 		float scale = MathF.Max( 0.001f, ScaleToScreen );
 		float diameter = MathF.Min( width, height );
 		var center = new Vector2( Box.Rect.Left + width * 0.5f, Box.Rect.Top + height * 0.5f );
-		Panel.Draw.Circle( center, diameter * 0.5f, FaceColor );
+		Draw.Circle( center, diameter * 0.5f, FaceColor );
 
 		DrawGridIcon( center, diameter, scale );
 	}
@@ -48,9 +48,9 @@ public sealed class ViewMoreCard : Panel
 
 	private static void DrawCell( float left, float top, float size, float stroke, float radius )
 	{
-		Panel.Draw.Rect( new Rect( left, top, size, stroke ), IconColor, radius );
-		Panel.Draw.Rect( new Rect( left, top + size - stroke, size, stroke ), IconColor, radius );
-		Panel.Draw.Rect( new Rect( left, top, stroke, size ), IconColor, radius );
-		Panel.Draw.Rect( new Rect( left + size - stroke, top, stroke, size ), IconColor, radius );
+		Draw.Rect( new Rect( left, top, size, stroke ), IconColor, radius );
+		Draw.Rect( new Rect( left, top + size - stroke, size, stroke ), IconColor, radius );
+		Draw.Rect( new Rect( left, top, stroke, size ), IconColor, radius );
+		Draw.Rect( new Rect( left + size - stroke, top, stroke, size ), IconColor, radius );
 	}
 }

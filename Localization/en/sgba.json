@@ -9,7 +9,7 @@
 
 	"addgames.card.label": "Add a Game",
 	"addgames.title": "Add a Game",
-	"addgames.sub": "Add .gba files to your games folder. Games added there are saved with Steam Cloud.",
+	"addgames.sub": "Copy .gba files into the folder shown below. Steam Cloud syncs it.",
 	"addgames.dismiss": "Done",
 
 	"settings.title": "Settings",

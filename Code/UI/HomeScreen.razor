@@ -393,8 +393,8 @@
 	{
 		Current = this;
 		EnsureInputHintsPanel();
-		_games = GameLibrary.Discover();
-			_knownPaths = GameLibrary.GetGamePaths();
+		_games = GameEntry.Discover();
+		_knownPaths = GameEntry.GetInstalledPaths();
 		RebuildGameLists(preserveSelection: false);
 		SyncBackdropTexture();
 		QueueArtworkRefresh();
@@ -1025,11 +1025,11 @@
 		if (_pollTimer >= PollInterval)
 		{
 			_pollTimer = 0f;
-			var current = GameLibrary.GetGamePaths();
+			var current = GameEntry.GetInstalledPaths();
 			if (!current.SetEquals(_knownPaths))
 			{
 				_knownPaths = current;
-				_games = GameLibrary.Discover();
+				_games = GameEntry.Discover();
 				RebuildGameLists();
 				QueueArtworkRefresh();
 				StateHasChanged();
@@ -1188,7 +1188,7 @@
 		else
 			_input.ForceMouseMode();
 
-		EnsureAllSoftwareSelectionVisible(smooth: useGamepad);
+		EnsureAllSoftwareSelectionVisible(smooth: true);
 		Sound.Play("ui.button.over");
 		QueueArtworkRefresh();
 		StateHasChanged();
