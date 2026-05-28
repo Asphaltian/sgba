@@ -405,6 +405,9 @@ public sealed partial class EmulatorComponent : Component
 
 		if ( !_videoFramePending )
 		{
+			if ( _paused )
+				return;
+
 			core.Video.RenderCommandList.Reset();
 			return;
 		}
@@ -588,6 +591,9 @@ public sealed partial class EmulatorComponent : Component
 		private GbaCoreThreadState _state = GbaCoreThreadState.Initialized;
 		private GbaCoreThreadRequest _requested;
 		private int _audioBufferIndex;
+		private bool _waitPrologueActive;
+		private bool _waitPrologueVideoFrameWait;
+		private bool _waitPrologueAudioWait;
 
 		public GbaCoreThread( Gba core, object coreLock, Func<ushort> readInputKeysActive, Action<string> logError, Action resetCallback )
 		{
@@ -634,6 +640,7 @@ public sealed partial class EmulatorComponent : Component
 		public void Pause()
 		{
 			SendRequest( GbaCoreThreadRequest.Pause );
+			WaitPrologue();
 			SignalStateOnThread();
 			Sync.ForceFrame();
 		}
@@ -641,6 +648,7 @@ public sealed partial class EmulatorComponent : Component
 		public void Unpause()
 		{
 			CancelRequest( GbaCoreThreadRequest.Pause );
+			WaitEpilogue();
 			SignalStateOnThread();
 			Sync.ForceFrame();
 		}
@@ -786,6 +794,24 @@ public sealed partial class EmulatorComponent : Component
 			}
 		}
 
+		private void WaitPrologue()
+		{
+			if ( _waitPrologueActive )
+				return;
+
+			Sync.WaitPrologue( out _waitPrologueVideoFrameWait, out _waitPrologueAudioWait );
+			_waitPrologueActive = true;
+		}
+
+		private void WaitEpilogue()
+		{
+			if ( !_waitPrologueActive )
+				return;
+
+			Sync.WaitEpilogue( _waitPrologueVideoFrameWait, _waitPrologueAudioWait );
+			_waitPrologueActive = false;
+		}
+
 		private bool IsRequested( GbaCoreThreadRequest request )
 		{
 			lock ( _stateLock )
@@ -876,6 +902,38 @@ public sealed partial class EmulatorComponent : Component
 		{
 			Signal( _videoFrameAvailable );
 			Signal( _videoFrameRequired );
+		}
+
+		public void WaitPrologue( out bool videoFrameWait, out bool audioWait )
+		{
+			lock ( _videoFrameLock )
+			{
+				videoFrameWait = VideoFrameWait;
+				VideoFrameWait = false;
+				Signal( _videoFrameAvailable );
+				Signal( _videoFrameRequired );
+			}
+
+			lock ( _audioBufferLock )
+			{
+				audioWait = AudioWait;
+				AudioWait = false;
+				Signal( _audioRequired );
+			}
+		}
+
+		public void WaitEpilogue( bool videoFrameWait, bool audioWait )
+		{
+			lock ( _audioBufferLock )
+			{
+				AudioWait = audioWait;
+			}
+
+			lock ( _videoFrameLock )
+			{
+				VideoFrameWait = videoFrameWait;
+				Signal( _videoFrameAvailable );
+			}
 		}
 
 		public bool WaitFrameStart()
