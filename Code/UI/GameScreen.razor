@@ -24,24 +24,6 @@
 
 @code
 {
-	public static GameScreen Current { get; private set; }
-
-	protected override void OnTreeFirstBuilt()
-	{
-		Current = this;
-	}
-
-	protected override void OnDestroy()
-	{
-		if ( Current == this )
-			Current = null;
-	}
-
-	public void Refresh()
-	{
-		StateHasChanged();
-	}
-
 	protected override int BuildHash()
 	{
 		EmulatorComponent emulator = EmulatorComponent.Current;

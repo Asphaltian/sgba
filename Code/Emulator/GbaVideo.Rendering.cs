@@ -117,27 +117,6 @@ public partial class GbaVideo
 		CreateGpuResources( scale );
 	}
 
-	public bool ResizeGpu( int scale, out Texture previousOutputTexture, out Texture previousClassicLcdTexture, bool force = false )
-	{
-		previousOutputTexture = null;
-		previousClassicLcdTexture = null;
-		scale = Math.Max( 1, scale );
-		if ( !GpuReady || (!force && scale == GpuScale) )
-			return false;
-
-		GpuScale = scale;
-		_scaledWidth = GbaConstants.ScreenWidth * GpuScale;
-		_scaledHeight = GbaConstants.ScreenHeight * GpuScale;
-
-		previousClassicLcdTexture = _classicLcdTex;
-		previousOutputTexture = OutputTexture;
-		_classicLcdTex = CreateScaledColorRT( ImageFormat.RGBA16161616F, gpuOnly: true );
-		OutputTexture = CreateScaledColorRT( ImageFormat.RGBA8888, gpuOnly: true );
-
-		ResetOriginalHistory();
-		return true;
-	}
-
 	public void DisposeGpu()
 	{
 		DisposeGpuResources();

@@ -23,16 +23,6 @@ public sealed partial class EmulatorComponent : Component
 	private GbaCoreThread _coreThread;
 	private Stopwatch _videoClock;
 	private double _nextVideoFrameDue;
-	private CameraComponent _attachedCommandListCamera;
-	private CommandList _attachedCommandList;
-	private bool _renderCommandListAttached;
-	private int _lastScreenWidth;
-	private int _lastScreenHeight;
-	private bool _lastWindowFocused = true;
-	private Texture _queuedScreenTexture;
-	private Texture _displayedTextureReleaseAfterSwap;
-	private int _queuedScreenTextureDelay;
-	private readonly List<DeferredTextureRelease> _deferredTextureReleases = new();
 
 	private const int AllKeysReleased = 0x03FF;
 	private const int AudioPrefillFrames = 2;
@@ -44,8 +34,6 @@ public sealed partial class EmulatorComponent : Component
 	private const int MaxPendingFrames = 3;
 	private const int SyncWaitMilliseconds = 50;
 	private const int WorkerWatchdogYieldMilliseconds = 500;
-	private const int ScreenTextureHandoffFrames = 2;
-	private const int TextureReleaseHandoffFrames = 4;
 	private const float StickDeadzone = 0.3f;
 
 	private int _inputKeys = AllKeysReleased;
@@ -56,12 +44,6 @@ public sealed partial class EmulatorComponent : Component
 	private int _initDeferFrames;
 	private string _stateBasePath;
 	private bool _appliedReproduceClassicFeel;
-
-	private sealed class DeferredTextureRelease
-	{
-		public Texture Texture;
-		public int Frames;
-	}
 
 	protected override void OnStart()
 	{
@@ -100,16 +82,11 @@ public sealed partial class EmulatorComponent : Component
 		lock ( CoreLock )
 		{
 			Gba core = coreThread?.Core;
-			Texture displayedTexture = ScreenTexture;
-			Texture coreOutputTexture = core?.Video?.OutputTexture;
 			if ( core?.Savedata != null && core.Savedata.Data.Length > 0 && _savePath != null )
 				FileSystem.Data.WriteAllBytes( _savePath, core.Savedata.Data );
 
-			if ( _renderCommandListAttached )
-				DetachRenderCommandList();
-
-			if ( displayedTexture != null && displayedTexture != coreOutputTexture )
-				displayedTexture.Dispose();
+			if ( _camera.IsValid() && core?.Video?.RenderCommandList != null )
+				_camera.RemoveCommandList( core.Video.RenderCommandList );
 
 			core?.Video?.DisposeGpu();
 			ScreenTexture = null;
@@ -125,13 +102,6 @@ public sealed partial class EmulatorComponent : Component
 		_inputCooldown = 0;
 		_initDeferFrames = 0;
 		_paused = false;
-		_queuedScreenTexture = null;
-		_displayedTextureReleaseAfterSwap = null;
-		_queuedScreenTextureDelay = 0;
-		DisposeDeferredTextureReleases();
-		_lastScreenWidth = 0;
-		_lastScreenHeight = 0;
-		_lastWindowFocused = true;
 		Interlocked.Exchange( ref _inputKeys, AllKeysReleased );
 		IsReady = false;
 	}
@@ -168,19 +138,12 @@ public sealed partial class EmulatorComponent : Component
 
 			core.Reset();
 			core.Video.InitGpu( scale: ComputeAutoScale() );
-			RememberCurrentScreenSize();
-			_lastWindowFocused = Application.IsFocused;
 			core.Video.SetReproduceClassicFeel( GamePreferences.ReproduceClassicFeel );
 			_appliedReproduceClassicFeel = GamePreferences.ReproduceClassicFeel;
 			ScreenTexture = core.Video.OutputTexture;
 
 			if ( _camera.IsValid() && core.Video.RenderCommandList != null )
-			{
 				_camera.AddCommandList( core.Video.RenderCommandList, Stage.AfterOpaque, 0 );
-				_attachedCommandListCamera = _camera;
-				_attachedCommandList = core.Video.RenderCommandList;
-				_renderCommandListAttached = true;
-			}
 
 			_stateBasePath = "states/" + System.IO.Path.GetFileNameWithoutExtension( RomPath );
 
@@ -225,45 +188,9 @@ public sealed partial class EmulatorComponent : Component
 
 	private static int ComputeAutoScale()
 	{
-		return TryComputeAutoScale( out int scale ) ? scale : 1;
-	}
-
-	private static bool TryComputeAutoScale( out int scale )
-	{
-		if ( !TryReadScreenSize( out int screenWidth, out int screenHeight ) )
-		{
-			scale = 1;
-			return false;
-		}
-
-		scale = ComputeAutoScale( screenWidth, screenHeight );
-		return true;
-	}
-
-	private static bool TryReadScreenSize( out int screenWidth, out int screenHeight )
-	{
-		screenWidth = (int)Screen.Width;
-		screenHeight = (int)Screen.Height;
-		return screenWidth > 0 && screenHeight > 0;
-	}
-
-	private static int ComputeAutoScale( int screenWidth, int screenHeight )
-	{
+		int screenWidth = Screen.Width > 0 ? (int)Screen.Width : 1920;
+		int screenHeight = Screen.Height > 0 ? (int)Screen.Height : 1080;
 		return Math.Clamp( Math.Min( screenWidth / 240, screenHeight / 160 ), 1, 8 );
-	}
-
-	private void RememberCurrentScreenSize()
-	{
-		if ( TryReadScreenSize( out int screenWidth, out int screenHeight ) )
-		{
-			_lastScreenWidth = screenWidth;
-			_lastScreenHeight = screenHeight;
-		}
-		else
-		{
-			_lastScreenWidth = 0;
-			_lastScreenHeight = 0;
-		}
 	}
 
 	protected override void OnUpdate()
@@ -271,7 +198,7 @@ public sealed partial class EmulatorComponent : Component
 		if ( !StartCoreWhenReady() )
 			return;
 
-		UpdateHostDisplayScale();
+		RescaleGpuIfNeeded();
 
 		if ( _appliedReproduceClassicFeel != GamePreferences.ReproduceClassicFeel )
 			ApplyDisplaySettings();
@@ -356,35 +283,18 @@ public sealed partial class EmulatorComponent : Component
 		_coreThread?.RunFunction( action );
 	}
 
-	private void UpdateHostDisplayScale()
+	private void RescaleGpuIfNeeded()
 	{
+		if ( _paused )
+			return;
+
 		Gba core = Core;
 		if ( core?.Video == null )
 			return;
 
-		TickDeferredTextureReleases();
-		RefreshPresentationAfterFocusRestore();
-
-		if ( !TryReadScreenSize( out int screenWidth, out int screenHeight ) )
-		{
-			_lastScreenWidth = 0;
-			_lastScreenHeight = 0;
-			return;
-		}
-
-		int desiredScale = ComputeAutoScale( screenWidth, screenHeight );
-		if ( screenWidth != _lastScreenWidth || screenHeight != _lastScreenHeight )
-		{
-			_lastScreenWidth = screenWidth;
-			_lastScreenHeight = screenHeight;
-			GameScreen.Current?.Refresh();
-		}
-
+		int desiredScale = ComputeAutoScale();
 		if ( core.Video.GpuScale == desiredScale )
-		{
-			EnsureRenderCommandListAttached();
 			return;
-		}
 
 		lock ( CoreLock )
 		{
@@ -394,171 +304,26 @@ public sealed partial class EmulatorComponent : Component
 			if ( core.Video.GpuScale == desiredScale )
 				return;
 
-			Texture previousOutputTexture;
-			Texture previousClassicLcdTexture = null;
-			bool resized = core.Video.ResizeGpu( desiredScale, out previousOutputTexture, out previousClassicLcdTexture );
-			if ( !resized )
-				return;
+			if ( _camera.IsValid() && core.Video.RenderCommandList != null )
+				_camera.RemoveCommandList( core.Video.RenderCommandList );
 
-			QueueDeferredTextureRelease( previousClassicLcdTexture );
-			QueueScreenTextureHandoff( core.Video.OutputTexture, previousOutputTexture );
-			EnsureRenderCommandListAttached();
+			core.Video.InitGpu( desiredScale );
+			core.Video.SetReproduceClassicFeel( GamePreferences.ReproduceClassicFeel );
+			_appliedReproduceClassicFeel = GamePreferences.ReproduceClassicFeel;
+			ScreenTexture = core.Video.OutputTexture;
+
+			if ( _camera.IsValid() && core.Video.RenderCommandList != null )
+				_camera.AddCommandList( core.Video.RenderCommandList, Stage.AfterOpaque, 0 );
+
 			_videoFramePending = true;
 			_coreThread?.Sync.ForceFrame();
 		}
-	}
-
-	private void RefreshPresentationAfterFocusRestore()
-	{
-		bool focused = Application.IsFocused;
-		if ( focused && !_lastWindowFocused )
-		{
-			GameScreen.Current?.Refresh();
-			_videoFramePending = true;
-			_coreThread?.Sync.ForceFrame();
-		}
-
-		_lastWindowFocused = focused;
-	}
-
-	private void DetachRenderCommandList()
-	{
-		if ( !_renderCommandListAttached )
-			return;
-
-		if ( _attachedCommandListCamera.IsValid() && _attachedCommandList != null )
-			_attachedCommandListCamera.RemoveCommandList( _attachedCommandList );
-
-		_attachedCommandListCamera = null;
-		_attachedCommandList = null;
-		_renderCommandListAttached = false;
-	}
-
-	private void EnsureRenderCommandListAttached()
-	{
-		Gba core = Core;
-		if ( core?.Video?.RenderCommandList == null )
-			return;
-
-		if ( !_camera.IsValid() || _camera != Scene.Camera )
-		{
-			_camera = Scene.Camera;
-		}
-
-		if ( !_camera.IsValid() )
-			return;
-
-		if ( _renderCommandListAttached && (_attachedCommandListCamera != _camera || _attachedCommandList != core.Video.RenderCommandList) )
-			DetachRenderCommandList();
-
-		if ( _renderCommandListAttached )
-			return;
-
-		_camera.AddCommandList( core.Video.RenderCommandList, Stage.AfterOpaque, 0 );
-		_attachedCommandListCamera = _camera;
-		_attachedCommandList = core.Video.RenderCommandList;
-		_renderCommandListAttached = true;
 	}
 
 	protected override void OnPreRender()
 	{
-		MarkPresentedTexturesUsed();
 		WaitForPostedCoreFrame();
 		UploadPendingVideoFrame();
-		CommitQueuedScreenTexture();
-	}
-
-	private void QueueScreenTextureHandoff( Texture nextTexture, Texture previousOutputTexture )
-	{
-		if ( nextTexture == null )
-			return;
-
-		Texture oldQueuedTexture = _queuedScreenTexture;
-		_queuedScreenTexture = nextTexture;
-		_queuedScreenTextureDelay = ScreenTextureHandoffFrames;
-
-		if ( previousOutputTexture == ScreenTexture )
-		{
-			_displayedTextureReleaseAfterSwap ??= previousOutputTexture;
-		}
-		else
-		{
-			QueueDeferredTextureRelease( previousOutputTexture );
-		}
-
-		if ( oldQueuedTexture != null && oldQueuedTexture != nextTexture && oldQueuedTexture != previousOutputTexture && oldQueuedTexture != ScreenTexture )
-			QueueDeferredTextureRelease( oldQueuedTexture );
-	}
-
-	private void CommitQueuedScreenTexture()
-	{
-		if ( _queuedScreenTexture == null )
-			return;
-
-		if ( _queuedScreenTextureDelay > 0 )
-		{
-			_queuedScreenTextureDelay--;
-			return;
-		}
-
-		Texture oldTexture = ScreenTexture;
-		ScreenTexture = _queuedScreenTexture;
-		_queuedScreenTexture = null;
-
-		if ( _displayedTextureReleaseAfterSwap != null && _displayedTextureReleaseAfterSwap != ScreenTexture )
-			QueueDeferredTextureRelease( _displayedTextureReleaseAfterSwap );
-		else if ( oldTexture != null && oldTexture != ScreenTexture && oldTexture != Core?.Video?.OutputTexture )
-			QueueDeferredTextureRelease( oldTexture );
-
-		_displayedTextureReleaseAfterSwap = null;
-		_queuedScreenTextureDelay = 0;
-		GameScreen.Current?.Refresh();
-	}
-
-	private void MarkPresentedTexturesUsed()
-	{
-		ScreenTexture?.MarkUsed();
-		_queuedScreenTexture?.MarkUsed();
-		Core?.Video?.OutputTexture?.MarkUsed();
-	}
-
-	private void QueueDeferredTextureRelease( Texture texture )
-	{
-		if ( texture == null )
-			return;
-
-		if ( texture == ScreenTexture || texture == _queuedScreenTexture || texture == Core?.Video?.OutputTexture )
-			return;
-
-		_deferredTextureReleases.Add( new DeferredTextureRelease { Texture = texture, Frames = TextureReleaseHandoffFrames } );
-	}
-
-	private void TickDeferredTextureReleases()
-	{
-		for ( int i = _deferredTextureReleases.Count - 1; i >= 0; i-- )
-		{
-			DeferredTextureRelease release = _deferredTextureReleases[i];
-			if ( release.Texture == ScreenTexture || release.Texture == _queuedScreenTexture || release.Texture == Core?.Video?.OutputTexture )
-			{
-				release.Frames = TextureReleaseHandoffFrames;
-				continue;
-			}
-
-			release.Frames--;
-			if ( release.Frames > 0 )
-				continue;
-
-			release.Texture?.Dispose();
-			_deferredTextureReleases.RemoveAt( i );
-		}
-	}
-
-	private void DisposeDeferredTextureReleases()
-	{
-		foreach ( DeferredTextureRelease release in _deferredTextureReleases )
-			release.Texture?.Dispose();
-
-		_deferredTextureReleases.Clear();
 	}
 
 	private void WaitForPostedCoreFrame()
