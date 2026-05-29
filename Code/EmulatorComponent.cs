@@ -33,7 +33,6 @@ public sealed partial class EmulatorComponent : Component
 	private const double GbaFrameTime = (double)GbaCyclesPerFrame / GbaClockRate;
 	private const int MaxPendingFrames = 3;
 	private const int SyncWaitMilliseconds = 50;
-	private const int WorkerWatchdogYieldMilliseconds = 500;
 	private const float StickDeadzone = 0.3f;
 
 	private int _inputKeys = AllKeysReleased;

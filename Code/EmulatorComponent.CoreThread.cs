@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -54,6 +53,7 @@ public sealed partial class EmulatorComponent
 		private readonly Action _resetCallback;
 		private readonly short[][] _audioBuffers;
 		private CancellationTokenSource _cts;
+		private Task _workerTask;
 		private GbaCoreThreadState _state = GbaCoreThreadState.Initialized;
 		private GbaCoreThreadRequest _requested;
 		private int _audioBufferIndex;
@@ -82,7 +82,8 @@ public sealed partial class EmulatorComponent
 
 			_cts = new CancellationTokenSource();
 			ChangeState( GbaCoreThreadState.Running );
-			_ = GameTask.RunInThreadAsync( Run );
+			_workerTask = GameTask.RunInThreadAsync( Run );
+			_ = ObserveWorkerTaskAsync( _workerTask );
 		}
 
 		public void End()
@@ -138,6 +139,29 @@ public sealed partial class EmulatorComponent
 			Sync.ForceFrame();
 		}
 
+		private async Task ObserveWorkerTaskAsync( Task workerTask )
+		{
+			try
+			{
+				await workerTask;
+			}
+			catch ( OperationCanceledException ) { }
+			catch ( ObjectDisposedException ) { }
+			catch ( Exception ex )
+			{
+				try
+				{
+					_logError?.Invoke( $"Emulation worker task error: {ex.Message}\n{ex.StackTrace}" );
+				}
+				catch { }
+			}
+			finally
+			{
+				if ( _workerTask == workerTask )
+					_workerTask = null;
+			}
+		}
+
 		private async Task Run()
 		{
 			CancellationTokenSource cts = _cts;
@@ -145,7 +169,6 @@ public sealed partial class EmulatorComponent
 				return;
 
 			CancellationToken token = cts.Token;
-			Stopwatch watchdogYield = Stopwatch.StartNew();
 
 			try
 			{
@@ -164,14 +187,9 @@ public sealed partial class EmulatorComponent
 					ChangeState( GbaCoreThreadState.Running );
 					FramePacket frame = RunFrame( token );
 					PostedFrames.Enqueue( frame );
-					await Sync.ProduceAudio( frame.AudioSamples, token );
-					await Sync.PostFrame( token );
-
-					if ( watchdogYield.ElapsedMilliseconds >= WorkerWatchdogYieldMilliseconds )
-					{
-						await System.Threading.Tasks.Task.Yield();
-						watchdogYield.Restart();
-					}
+					await Sync.ProduceAudioAsync( frame.AudioSamples, token );
+					await Sync.PostFrameAsync( token );
+					await GameTask.Yield();
 				}
 			}
 			catch ( OperationCanceledException ) { }
@@ -180,7 +198,11 @@ public sealed partial class EmulatorComponent
 			{
 				SendRequest( GbaCoreThreadRequest.Crashed );
 				ChangeState( GbaCoreThreadState.Crashed );
-				_logError?.Invoke( $"Emulation worker error: {ex.Message}\n{ex.StackTrace}" );
+				try
+				{
+					_logError?.Invoke( $"Emulation worker error: {ex.Message}\n{ex.StackTrace}" );
+				}
+				catch { }
 			}
 			finally
 			{

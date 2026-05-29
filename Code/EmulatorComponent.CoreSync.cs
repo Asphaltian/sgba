@@ -28,7 +28,7 @@ public sealed partial class EmulatorComponent
 			AudioHighWater = 512;
 		}
 
-		public async Task PostFrame( CancellationToken token )
+		public async Task PostFrameAsync( CancellationToken token )
 		{
 			lock ( _videoFrameLock )
 			{
@@ -150,7 +150,7 @@ public sealed partial class EmulatorComponent
 			}
 		}
 
-		public async Task ProduceAudio( int audioSamples, CancellationToken token )
+		public async Task ProduceAudioAsync( int audioSamples, CancellationToken token )
 		{
 			if ( audioSamples <= 0 )
 				return;
