@@ -1,7 +1,5 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading;
-using System.Threading.Tasks;
 using Sandbox.Rendering;
 
 namespace sGBA;
@@ -25,6 +23,16 @@ public sealed partial class EmulatorComponent : Component
 	private GbaCoreThread _coreThread;
 	private Stopwatch _videoClock;
 	private double _nextVideoFrameDue;
+	private CameraComponent _attachedCommandListCamera;
+	private CommandList _attachedCommandList;
+	private bool _renderCommandListAttached;
+	private int _lastScreenWidth;
+	private int _lastScreenHeight;
+	private bool _lastWindowFocused = true;
+	private Texture _queuedScreenTexture;
+	private Texture _displayedTextureReleaseAfterSwap;
+	private int _queuedScreenTextureDelay;
+	private readonly List<DeferredTextureRelease> _deferredTextureReleases = new();
 
 	private const int AllKeysReleased = 0x03FF;
 	private const int AudioPrefillFrames = 2;
@@ -36,6 +44,8 @@ public sealed partial class EmulatorComponent : Component
 	private const int MaxPendingFrames = 3;
 	private const int SyncWaitMilliseconds = 50;
 	private const int WorkerWatchdogYieldMilliseconds = 500;
+	private const int ScreenTextureHandoffFrames = 2;
+	private const int TextureReleaseHandoffFrames = 4;
 	private const float StickDeadzone = 0.3f;
 
 	private int _inputKeys = AllKeysReleased;
@@ -47,36 +57,10 @@ public sealed partial class EmulatorComponent : Component
 	private string _stateBasePath;
 	private bool _appliedReproduceClassicFeel;
 
-	private readonly struct FramePacket( short[] audio, int audioSamples, byte[] saveData )
+	private sealed class DeferredTextureRelease
 	{
-		public readonly short[] Audio = audio;
-		public readonly int AudioSamples = audioSamples;
-		public readonly byte[] SaveData = saveData;
-	}
-
-	private enum GbaCoreThreadState
-	{
-		Initialized = -1,
-		Running = 0,
-		Request,
-		Interrupted,
-		Paused,
-		Crashed,
-		Interrupting,
-		Exiting,
-		Shutdown
-	}
-
-	[Flags]
-	private enum GbaCoreThreadRequest
-	{
-		None = 0,
-		Pause = 1,
-		Wait = 2,
-		Reset = 4,
-		RunOn = 8,
-		Crashed = 16,
-		RewindEmpty = 32
+		public Texture Texture;
+		public int Frames;
 	}
 
 	protected override void OnStart()
@@ -116,11 +100,16 @@ public sealed partial class EmulatorComponent : Component
 		lock ( CoreLock )
 		{
 			Gba core = coreThread?.Core;
+			Texture displayedTexture = ScreenTexture;
+			Texture coreOutputTexture = core?.Video?.OutputTexture;
 			if ( core?.Savedata != null && core.Savedata.Data.Length > 0 && _savePath != null )
 				FileSystem.Data.WriteAllBytes( _savePath, core.Savedata.Data );
 
-			if ( _camera.IsValid() && core?.Video?.RenderCommandList != null )
-				_camera.RemoveCommandList( core.Video.RenderCommandList );
+			if ( _renderCommandListAttached )
+				DetachRenderCommandList();
+
+			if ( displayedTexture != null && displayedTexture != coreOutputTexture )
+				displayedTexture.Dispose();
 
 			core?.Video?.DisposeGpu();
 			ScreenTexture = null;
@@ -136,6 +125,13 @@ public sealed partial class EmulatorComponent : Component
 		_inputCooldown = 0;
 		_initDeferFrames = 0;
 		_paused = false;
+		_queuedScreenTexture = null;
+		_displayedTextureReleaseAfterSwap = null;
+		_queuedScreenTextureDelay = 0;
+		DisposeDeferredTextureReleases();
+		_lastScreenWidth = 0;
+		_lastScreenHeight = 0;
+		_lastWindowFocused = true;
 		Interlocked.Exchange( ref _inputKeys, AllKeysReleased );
 		IsReady = false;
 	}
@@ -172,12 +168,19 @@ public sealed partial class EmulatorComponent : Component
 
 			core.Reset();
 			core.Video.InitGpu( scale: ComputeAutoScale() );
+			RememberCurrentScreenSize();
+			_lastWindowFocused = Application.IsFocused;
 			core.Video.SetReproduceClassicFeel( GamePreferences.ReproduceClassicFeel );
 			_appliedReproduceClassicFeel = GamePreferences.ReproduceClassicFeel;
 			ScreenTexture = core.Video.OutputTexture;
 
 			if ( _camera.IsValid() && core.Video.RenderCommandList != null )
+			{
 				_camera.AddCommandList( core.Video.RenderCommandList, Stage.AfterOpaque, 0 );
+				_attachedCommandListCamera = _camera;
+				_attachedCommandList = core.Video.RenderCommandList;
+				_renderCommandListAttached = true;
+			}
 
 			_stateBasePath = "states/" + System.IO.Path.GetFileNameWithoutExtension( RomPath );
 
@@ -222,9 +225,45 @@ public sealed partial class EmulatorComponent : Component
 
 	private static int ComputeAutoScale()
 	{
-		int sw = Screen.Width > 0 ? (int)Screen.Width : 1920;
-		int sh = Screen.Height > 0 ? (int)Screen.Height : 1080;
-		return Math.Clamp( Math.Min( sw / 240, sh / 160 ), 1, 8 );
+		return TryComputeAutoScale( out int scale ) ? scale : 1;
+	}
+
+	private static bool TryComputeAutoScale( out int scale )
+	{
+		if ( !TryReadScreenSize( out int screenWidth, out int screenHeight ) )
+		{
+			scale = 1;
+			return false;
+		}
+
+		scale = ComputeAutoScale( screenWidth, screenHeight );
+		return true;
+	}
+
+	private static bool TryReadScreenSize( out int screenWidth, out int screenHeight )
+	{
+		screenWidth = (int)Screen.Width;
+		screenHeight = (int)Screen.Height;
+		return screenWidth > 0 && screenHeight > 0;
+	}
+
+	private static int ComputeAutoScale( int screenWidth, int screenHeight )
+	{
+		return Math.Clamp( Math.Min( screenWidth / 240, screenHeight / 160 ), 1, 8 );
+	}
+
+	private void RememberCurrentScreenSize()
+	{
+		if ( TryReadScreenSize( out int screenWidth, out int screenHeight ) )
+		{
+			_lastScreenWidth = screenWidth;
+			_lastScreenHeight = screenHeight;
+		}
+		else
+		{
+			_lastScreenWidth = 0;
+			_lastScreenHeight = 0;
+		}
 	}
 
 	protected override void OnUpdate()
@@ -232,7 +271,7 @@ public sealed partial class EmulatorComponent : Component
 		if ( !StartCoreWhenReady() )
 			return;
 
-		RescaleGpuIfNeeded();
+		UpdateHostDisplayScale();
 
 		if ( _appliedReproduceClassicFeel != GamePreferences.ReproduceClassicFeel )
 			ApplyDisplaySettings();
@@ -317,18 +356,35 @@ public sealed partial class EmulatorComponent : Component
 		_coreThread?.RunFunction( action );
 	}
 
-	private void RescaleGpuIfNeeded()
+	private void UpdateHostDisplayScale()
 	{
-		if ( _paused )
-			return;
-
 		Gba core = Core;
 		if ( core?.Video == null )
 			return;
 
-		int desiredScale = ComputeAutoScale();
-		if ( core.Video.GpuScale == desiredScale )
+		TickDeferredTextureReleases();
+		RefreshPresentationAfterFocusRestore();
+
+		if ( !TryReadScreenSize( out int screenWidth, out int screenHeight ) )
+		{
+			_lastScreenWidth = 0;
+			_lastScreenHeight = 0;
 			return;
+		}
+
+		int desiredScale = ComputeAutoScale( screenWidth, screenHeight );
+		if ( screenWidth != _lastScreenWidth || screenHeight != _lastScreenHeight )
+		{
+			_lastScreenWidth = screenWidth;
+			_lastScreenHeight = screenHeight;
+			GameScreen.Current?.Refresh();
+		}
+
+		if ( core.Video.GpuScale == desiredScale )
+		{
+			EnsureRenderCommandListAttached();
+			return;
+		}
 
 		lock ( CoreLock )
 		{
@@ -338,30 +394,174 @@ public sealed partial class EmulatorComponent : Component
 			if ( core.Video.GpuScale == desiredScale )
 				return;
 
-			if ( _camera.IsValid() && core.Video.RenderCommandList != null )
-				_camera.RemoveCommandList( core.Video.RenderCommandList );
+			Texture previousOutputTexture;
+			Texture previousClassicLcdTexture = null;
+			bool resized = core.Video.ResizeGpu( desiredScale, out previousOutputTexture, out previousClassicLcdTexture );
+			if ( !resized )
+				return;
 
-			core.Video.DisposeGpu();
-			core.Video.InitGpu( desiredScale );
-			core.Video.SetReproduceClassicFeel( GamePreferences.ReproduceClassicFeel );
-			_appliedReproduceClassicFeel = GamePreferences.ReproduceClassicFeel;
-			ScreenTexture = core.Video.OutputTexture;
-
-			if ( _camera.IsValid() && core.Video.RenderCommandList != null )
-				_camera.AddCommandList( core.Video.RenderCommandList, Stage.AfterOpaque, 0 );
-
-			_videoFramePending = false;
+			QueueDeferredTextureRelease( previousClassicLcdTexture );
+			QueueScreenTextureHandoff( core.Video.OutputTexture, previousOutputTexture );
+			EnsureRenderCommandListAttached();
+			_videoFramePending = true;
 			_coreThread?.Sync.ForceFrame();
 		}
 	}
 
-	protected override void OnPreRender()
+	private void RefreshPresentationAfterFocusRestore()
 	{
-		WaitFrameStart();
-		PresentVideoFrame();
+		bool focused = Application.IsFocused;
+		if ( focused && !_lastWindowFocused )
+		{
+			GameScreen.Current?.Refresh();
+			_videoFramePending = true;
+			_coreThread?.Sync.ForceFrame();
+		}
+
+		_lastWindowFocused = focused;
 	}
 
-	private void WaitFrameStart()
+	private void DetachRenderCommandList()
+	{
+		if ( !_renderCommandListAttached )
+			return;
+
+		if ( _attachedCommandListCamera.IsValid() && _attachedCommandList != null )
+			_attachedCommandListCamera.RemoveCommandList( _attachedCommandList );
+
+		_attachedCommandListCamera = null;
+		_attachedCommandList = null;
+		_renderCommandListAttached = false;
+	}
+
+	private void EnsureRenderCommandListAttached()
+	{
+		Gba core = Core;
+		if ( core?.Video?.RenderCommandList == null )
+			return;
+
+		if ( !_camera.IsValid() || _camera != Scene.Camera )
+		{
+			_camera = Scene.Camera;
+		}
+
+		if ( !_camera.IsValid() )
+			return;
+
+		if ( _renderCommandListAttached && (_attachedCommandListCamera != _camera || _attachedCommandList != core.Video.RenderCommandList) )
+			DetachRenderCommandList();
+
+		if ( _renderCommandListAttached )
+			return;
+
+		_camera.AddCommandList( core.Video.RenderCommandList, Stage.AfterOpaque, 0 );
+		_attachedCommandListCamera = _camera;
+		_attachedCommandList = core.Video.RenderCommandList;
+		_renderCommandListAttached = true;
+	}
+
+	protected override void OnPreRender()
+	{
+		MarkPresentedTexturesUsed();
+		WaitForPostedCoreFrame();
+		UploadPendingVideoFrame();
+		CommitQueuedScreenTexture();
+	}
+
+	private void QueueScreenTextureHandoff( Texture nextTexture, Texture previousOutputTexture )
+	{
+		if ( nextTexture == null )
+			return;
+
+		Texture oldQueuedTexture = _queuedScreenTexture;
+		_queuedScreenTexture = nextTexture;
+		_queuedScreenTextureDelay = ScreenTextureHandoffFrames;
+
+		if ( previousOutputTexture == ScreenTexture )
+		{
+			_displayedTextureReleaseAfterSwap ??= previousOutputTexture;
+		}
+		else
+		{
+			QueueDeferredTextureRelease( previousOutputTexture );
+		}
+
+		if ( oldQueuedTexture != null && oldQueuedTexture != nextTexture && oldQueuedTexture != previousOutputTexture && oldQueuedTexture != ScreenTexture )
+			QueueDeferredTextureRelease( oldQueuedTexture );
+	}
+
+	private void CommitQueuedScreenTexture()
+	{
+		if ( _queuedScreenTexture == null )
+			return;
+
+		if ( _queuedScreenTextureDelay > 0 )
+		{
+			_queuedScreenTextureDelay--;
+			return;
+		}
+
+		Texture oldTexture = ScreenTexture;
+		ScreenTexture = _queuedScreenTexture;
+		_queuedScreenTexture = null;
+
+		if ( _displayedTextureReleaseAfterSwap != null && _displayedTextureReleaseAfterSwap != ScreenTexture )
+			QueueDeferredTextureRelease( _displayedTextureReleaseAfterSwap );
+		else if ( oldTexture != null && oldTexture != ScreenTexture && oldTexture != Core?.Video?.OutputTexture )
+			QueueDeferredTextureRelease( oldTexture );
+
+		_displayedTextureReleaseAfterSwap = null;
+		_queuedScreenTextureDelay = 0;
+		GameScreen.Current?.Refresh();
+	}
+
+	private void MarkPresentedTexturesUsed()
+	{
+		ScreenTexture?.MarkUsed();
+		_queuedScreenTexture?.MarkUsed();
+		Core?.Video?.OutputTexture?.MarkUsed();
+	}
+
+	private void QueueDeferredTextureRelease( Texture texture )
+	{
+		if ( texture == null )
+			return;
+
+		if ( texture == ScreenTexture || texture == _queuedScreenTexture || texture == Core?.Video?.OutputTexture )
+			return;
+
+		_deferredTextureReleases.Add( new DeferredTextureRelease { Texture = texture, Frames = TextureReleaseHandoffFrames } );
+	}
+
+	private void TickDeferredTextureReleases()
+	{
+		for ( int i = _deferredTextureReleases.Count - 1; i >= 0; i-- )
+		{
+			DeferredTextureRelease release = _deferredTextureReleases[i];
+			if ( release.Texture == ScreenTexture || release.Texture == _queuedScreenTexture || release.Texture == Core?.Video?.OutputTexture )
+			{
+				release.Frames = TextureReleaseHandoffFrames;
+				continue;
+			}
+
+			release.Frames--;
+			if ( release.Frames > 0 )
+				continue;
+
+			release.Texture?.Dispose();
+			_deferredTextureReleases.RemoveAt( i );
+		}
+	}
+
+	private void DisposeDeferredTextureReleases()
+	{
+		foreach ( DeferredTextureRelease release in _deferredTextureReleases )
+			release.Texture?.Dispose();
+
+		_deferredTextureReleases.Clear();
+	}
+
+	private void WaitForPostedCoreFrame()
 	{
 		GbaCoreThread coreThread = _coreThread;
 		GbaCoreSync sync = coreThread?.Sync;
@@ -371,12 +571,12 @@ public sealed partial class EmulatorComponent : Component
 		if ( !sync.WaitFrameStart() )
 			return;
 
-		DrainPostedFrames( coreThread );
+		DrainPostedCoreFrames( coreThread );
 		sync.WaitFrameEnd();
 		AdvanceVideoClock( sync );
 	}
 
-	private void DrainPostedFrames( GbaCoreThread coreThread )
+	private void DrainPostedCoreFrames( GbaCoreThread coreThread )
 	{
 		bool hasFrame = false;
 
@@ -397,24 +597,17 @@ public sealed partial class EmulatorComponent : Component
 			_videoFramePending = true;
 	}
 
-	private void PresentVideoFrame()
+	private void UploadPendingVideoFrame()
 	{
 		Gba core = Core;
 		if ( core?.Video?.RenderCommandList == null )
 			return;
 
 		if ( !_videoFramePending )
-		{
-			if ( _paused )
-				return;
-
-			core.Video.RenderCommandList.Reset();
 			return;
-		}
 
-		_videoFramePending = false;
-		if ( !core.Video.UploadAndBuildCommandList() )
-			core.Video.RenderCommandList.Reset();
+		if ( core.Video.UploadAndBuildCommandList() )
+			_videoFramePending = false;
 	}
 
 	private void PollInput()
@@ -571,479 +764,5 @@ public sealed partial class EmulatorComponent : Component
 			Log.Warning( formatted );
 		else
 			Log.Info( formatted );
-	}
-
-	private sealed class GbaCoreThread
-	{
-		public Gba Core { get; }
-		public GbaCoreSync Sync { get; } = new();
-		public ConcurrentQueue<FramePacket> PostedFrames { get; } = new();
-
-		private readonly ConcurrentQueue<Action<Gba>> _runQueue = new();
-		private readonly SemaphoreSlim _stateOnThreadSignal = new( 0, 1 );
-		private readonly object _stateLock = new();
-		private readonly object _coreLock;
-		private readonly Func<ushort> _readInputKeysActive;
-		private readonly Action<string> _logError;
-		private readonly Action _resetCallback;
-		private readonly short[][] _audioBuffers;
-		private CancellationTokenSource _cts;
-		private GbaCoreThreadState _state = GbaCoreThreadState.Initialized;
-		private GbaCoreThreadRequest _requested;
-		private int _audioBufferIndex;
-		private bool _waitPrologueActive;
-		private bool _waitPrologueVideoFrameWait;
-		private bool _waitPrologueAudioWait;
-
-		public GbaCoreThread( Gba core, object coreLock, Func<ushort> readInputKeysActive, Action<string> logError, Action resetCallback )
-		{
-			Core = core;
-			_coreLock = coreLock;
-			_readInputKeysActive = readInputKeysActive;
-			_logError = logError;
-			_resetCallback = resetCallback;
-			_audioBuffers = new short[4][];
-
-			int audioBufferSize = GbaAudio.SamplesPerFrame * 2;
-			for ( int i = 0; i < _audioBuffers.Length; i++ )
-				_audioBuffers[i] = new short[audioBufferSize];
-		}
-
-		public void Start()
-		{
-			if ( _cts != null )
-				return;
-
-			_cts = new CancellationTokenSource();
-			ChangeState( GbaCoreThreadState.Running );
-			_ = GameTask.RunInThreadAsync( Run );
-		}
-
-		public void End()
-		{
-			ChangeState( GbaCoreThreadState.Exiting );
-			_cts?.Cancel();
-			Sync.SetAudioSync( false );
-			Sync.SetVideoSync( false );
-			Sync.ForceFrame();
-			SignalStateOnThread();
-			_cts = null;
-		}
-
-		public void Reset()
-		{
-			SendRequest( GbaCoreThreadRequest.Reset );
-			SignalStateOnThread();
-			Sync.ForceFrame();
-		}
-
-		public void Pause()
-		{
-			SendRequest( GbaCoreThreadRequest.Pause );
-			WaitPrologue();
-			SignalStateOnThread();
-			Sync.ForceFrame();
-		}
-
-		public void Unpause()
-		{
-			CancelRequest( GbaCoreThreadRequest.Pause );
-			WaitEpilogue();
-			SignalStateOnThread();
-			Sync.ForceFrame();
-		}
-
-		public void SetPaused( bool paused )
-		{
-			if ( paused )
-				Pause();
-			else
-				Unpause();
-		}
-
-		public void RunFunction( Action<Gba> run )
-		{
-			if ( run == null || _cts == null )
-				return;
-
-			_runQueue.Enqueue( run );
-			SendRequest( GbaCoreThreadRequest.RunOn );
-			SignalStateOnThread();
-			Sync.ForceFrame();
-		}
-
-		private async Task Run()
-		{
-			CancellationTokenSource cts = _cts;
-			if ( cts == null )
-				return;
-
-			CancellationToken token = cts.Token;
-			Stopwatch watchdogYield = Stopwatch.StartNew();
-
-			try
-			{
-				while ( !token.IsCancellationRequested )
-				{
-					GbaCoreThreadRequest pendingRequests = TakePendingRequests();
-					RunPendingRequests( pendingRequests );
-
-					if ( IsRequested( GbaCoreThreadRequest.Pause | GbaCoreThreadRequest.Wait | GbaCoreThreadRequest.Crashed | GbaCoreThreadRequest.RewindEmpty ) )
-					{
-						ChangeState( GbaCoreThreadState.Paused );
-						await _stateOnThreadSignal.WaitAsync( SyncWaitMilliseconds, token );
-						continue;
-					}
-
-					ChangeState( GbaCoreThreadState.Running );
-					FramePacket frame = RunFrame( token );
-					PostedFrames.Enqueue( frame );
-					await Sync.ProduceAudio( frame.AudioSamples, token );
-					await Sync.PostFrame( token );
-
-					if ( watchdogYield.ElapsedMilliseconds >= WorkerWatchdogYieldMilliseconds )
-					{
-						await System.Threading.Tasks.Task.Yield();
-						watchdogYield.Restart();
-					}
-				}
-			}
-			catch ( OperationCanceledException ) { }
-			catch ( ObjectDisposedException ) { }
-			catch ( Exception ex )
-			{
-				SendRequest( GbaCoreThreadRequest.Crashed );
-				ChangeState( GbaCoreThreadState.Crashed );
-				_logError?.Invoke( $"Emulation worker error: {ex.Message}\n{ex.StackTrace}" );
-			}
-			finally
-			{
-				ChangeState( GbaCoreThreadState.Shutdown );
-			}
-		}
-
-		private FramePacket RunFrame( CancellationToken token )
-		{
-			short[] audio;
-			int audioSamples;
-			byte[] saveData = null;
-
-			lock ( _coreLock )
-			{
-				Core.KeysActive = _readInputKeysActive();
-				Core.RunFrame();
-
-				if ( token.IsCancellationRequested )
-					return new FramePacket( null, 0, null );
-
-				int bufferIndex = _audioBufferIndex;
-				_audioBufferIndex = (bufferIndex + 1) & 3;
-				audio = _audioBuffers[bufferIndex];
-
-				audioSamples = Core.Audio.SamplesWritten;
-				if ( audioSamples > 0 )
-					Buffer.BlockCopy( Core.Audio.OutputBuffer, 0, audio, 0, audioSamples * 2 * sizeof( short ) );
-
-				if ( Core.Savedata.Clean() && Core.Savedata.Data.Length > 0 )
-					saveData = Core.Savedata.Data.ToArray();
-			}
-
-			return new FramePacket( audio, audioSamples, saveData );
-		}
-
-		private GbaCoreThreadRequest TakePendingRequests()
-		{
-			lock ( _stateLock )
-			{
-				GbaCoreThreadRequest pendingRequests = _requested;
-				_requested &= GbaCoreThreadRequest.Pause | GbaCoreThreadRequest.Wait | GbaCoreThreadRequest.Crashed | GbaCoreThreadRequest.RewindEmpty;
-				return pendingRequests;
-			}
-		}
-
-		private void RunPendingRequests( GbaCoreThreadRequest pendingRequests )
-		{
-			if ( (pendingRequests & GbaCoreThreadRequest.Reset) != 0 )
-			{
-				lock ( _coreLock )
-				{
-					Core.Reset();
-				}
-				_resetCallback?.Invoke();
-			}
-
-			if ( (pendingRequests & GbaCoreThreadRequest.RunOn) != 0 )
-				RunPendingFunctions();
-		}
-
-		private void RunPendingFunctions()
-		{
-			while ( _runQueue.TryDequeue( out Action<Gba> run ) )
-			{
-				try
-				{
-					lock ( _coreLock )
-					{
-						run( Core );
-					}
-				}
-				catch ( Exception ex )
-				{
-					GbaLog.Write( LogCategory.GBA, LogLevel.Error, ex.Message );
-				}
-			}
-		}
-
-		private void WaitPrologue()
-		{
-			if ( _waitPrologueActive )
-				return;
-
-			Sync.WaitPrologue( out _waitPrologueVideoFrameWait, out _waitPrologueAudioWait );
-			_waitPrologueActive = true;
-		}
-
-		private void WaitEpilogue()
-		{
-			if ( !_waitPrologueActive )
-				return;
-
-			Sync.WaitEpilogue( _waitPrologueVideoFrameWait, _waitPrologueAudioWait );
-			_waitPrologueActive = false;
-		}
-
-		private bool IsRequested( GbaCoreThreadRequest request )
-		{
-			lock ( _stateLock )
-			{
-				return (_requested & request) != 0;
-			}
-		}
-
-		private void SendRequest( GbaCoreThreadRequest request )
-		{
-			lock ( _stateLock )
-			{
-				_requested |= request;
-				if ( _state is GbaCoreThreadState.Running or GbaCoreThreadState.Paused or GbaCoreThreadState.Crashed )
-					_state = GbaCoreThreadState.Request;
-			}
-		}
-
-		private void CancelRequest( GbaCoreThreadRequest request )
-		{
-			lock ( _stateLock )
-			{
-				_requested &= ~request;
-				if ( _state == GbaCoreThreadState.Request && _requested == GbaCoreThreadRequest.None )
-					_state = GbaCoreThreadState.Running;
-			}
-		}
-
-		private void ChangeState( GbaCoreThreadState state )
-		{
-			lock ( _stateLock )
-			{
-				_state = state;
-			}
-		}
-
-		private void SignalStateOnThread()
-		{
-			try { _stateOnThreadSignal.Release(); }
-			catch ( SemaphoreFullException ) { }
-		}
-	}
-
-	private sealed class GbaCoreSync
-	{
-		public int VideoFramePending { get; private set; }
-		public bool VideoFrameWait { get; private set; }
-		public bool AudioWait { get; private set; }
-		public int AudioHighWater { get; set; }
-		public float FpsTarget { get; private set; }
-
-		private readonly object _videoFrameLock = new();
-		private readonly object _audioBufferLock = new();
-		private readonly SemaphoreSlim _videoFrameAvailable = new( 0, 1 );
-		private readonly SemaphoreSlim _videoFrameRequired = new( 0, 1 );
-		private readonly SemaphoreSlim _audioRequired = new( 0, 1 );
-		private int _audioSamplesPending;
-
-		public void LoadCoreOptions( bool audioSync, bool videoSync, float fpsTarget )
-		{
-			AudioWait = audioSync;
-			VideoFrameWait = videoSync;
-			FpsTarget = fpsTarget > 0 ? fpsTarget : 60f;
-			AudioHighWater = 512;
-		}
-
-		public async Task PostFrame( CancellationToken token )
-		{
-			lock ( _videoFrameLock )
-			{
-				VideoFramePending++;
-				Signal( _videoFrameAvailable );
-			}
-
-			while ( true )
-			{
-				lock ( _videoFrameLock )
-				{
-					if ( !VideoFrameWait || VideoFramePending <= 0 )
-						return;
-				}
-
-				await _videoFrameRequired.WaitAsync( SyncWaitMilliseconds, token );
-			}
-		}
-
-		public void ForceFrame()
-		{
-			Signal( _videoFrameAvailable );
-			Signal( _videoFrameRequired );
-		}
-
-		public void WaitPrologue( out bool videoFrameWait, out bool audioWait )
-		{
-			lock ( _videoFrameLock )
-			{
-				videoFrameWait = VideoFrameWait;
-				VideoFrameWait = false;
-				Signal( _videoFrameAvailable );
-				Signal( _videoFrameRequired );
-			}
-
-			lock ( _audioBufferLock )
-			{
-				audioWait = AudioWait;
-				AudioWait = false;
-				Signal( _audioRequired );
-			}
-		}
-
-		public void WaitEpilogue( bool videoFrameWait, bool audioWait )
-		{
-			lock ( _audioBufferLock )
-			{
-				AudioWait = audioWait;
-			}
-
-			lock ( _videoFrameLock )
-			{
-				VideoFrameWait = videoFrameWait;
-				Signal( _videoFrameAvailable );
-			}
-		}
-
-		public bool WaitFrameStart()
-		{
-			Monitor.Enter( _videoFrameLock );
-			try
-			{
-				if ( !VideoFrameWait && VideoFramePending <= 0 )
-					return false;
-
-				Signal( _videoFrameRequired );
-
-				if ( VideoFrameWait && VideoFramePending <= 0 )
-				{
-					Drain( _videoFrameAvailable );
-					Monitor.Exit( _videoFrameLock );
-					try
-					{
-						if ( !_videoFrameAvailable.Wait( SyncWaitMilliseconds ) )
-							return false;
-					}
-					finally
-					{
-						Monitor.Enter( _videoFrameLock );
-					}
-				}
-
-				if ( VideoFramePending <= 0 )
-					return false;
-
-				Drain( _videoFrameAvailable );
-				VideoFramePending = 0;
-				return true;
-			}
-			finally
-			{
-				Monitor.Exit( _videoFrameLock );
-			}
-		}
-
-		public void WaitFrameEnd()
-		{
-			Signal( _videoFrameRequired );
-		}
-
-		public void SetVideoSync( bool wait )
-		{
-			lock ( _videoFrameLock )
-			{
-				if ( wait == VideoFrameWait )
-					return;
-
-				VideoFrameWait = wait;
-				Signal( _videoFrameAvailable );
-			}
-		}
-
-		public void SetAudioSync( bool wait )
-		{
-			lock ( _audioBufferLock )
-			{
-				AudioWait = wait;
-				Signal( _audioRequired );
-			}
-		}
-
-		public async Task ProduceAudio( int audioSamples, CancellationToken token )
-		{
-			if ( audioSamples <= 0 )
-				return;
-
-			lock ( _audioBufferLock )
-			{
-				_audioSamplesPending += audioSamples;
-			}
-
-			while ( true )
-			{
-				lock ( _audioBufferLock )
-				{
-					if ( !AudioWait || AudioHighWater <= 0 || _audioSamplesPending < AudioHighWater )
-						return;
-				}
-
-				await _audioRequired.WaitAsync( SyncWaitMilliseconds, token );
-			}
-		}
-
-		public void ConsumeAudio( int audioSamples )
-		{
-			if ( audioSamples > 0 )
-			{
-				lock ( _audioBufferLock )
-				{
-					_audioSamplesPending = Math.Max( 0, _audioSamplesPending - audioSamples );
-				}
-			}
-
-			Signal( _audioRequired );
-		}
-
-		private static void Signal( SemaphoreSlim signal )
-		{
-			try { signal.Release(); }
-			catch ( SemaphoreFullException ) { }
-		}
-
-		private static void Drain( SemaphoreSlim signal )
-		{
-			while ( signal.Wait( 0 ) ) { }
-		}
 	}
 }

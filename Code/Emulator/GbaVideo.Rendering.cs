@@ -112,10 +112,40 @@ public partial class GbaVideo
 
 	public void InitGpu( int scale = 1 )
 	{
-		GpuScale = Math.Max( 1, scale );
+		DisposeGpu();
+		CreateFrameSnapshots();
+		CreateGpuResources( scale );
+	}
+
+	public bool ResizeGpu( int scale, out Texture previousOutputTexture, out Texture previousClassicLcdTexture, bool force = false )
+	{
+		previousOutputTexture = null;
+		previousClassicLcdTexture = null;
+		scale = Math.Max( 1, scale );
+		if ( !GpuReady || (!force && scale == GpuScale) )
+			return false;
+
+		GpuScale = scale;
 		_scaledWidth = GbaConstants.ScreenWidth * GpuScale;
 		_scaledHeight = GbaConstants.ScreenHeight * GpuScale;
 
+		previousClassicLcdTexture = _classicLcdTex;
+		previousOutputTexture = OutputTexture;
+		_classicLcdTex = CreateScaledColorRT( ImageFormat.RGBA16161616F, gpuOnly: true );
+		OutputTexture = CreateScaledColorRT( ImageFormat.RGBA8888, gpuOnly: true );
+
+		ResetOriginalHistory();
+		return true;
+	}
+
+	public void DisposeGpu()
+	{
+		DisposeGpuResources();
+		ClearFrameSnapshots();
+	}
+
+	private void CreateFrameSnapshots()
+	{
 		_scanlineFrames = new ScanlineState[2][];
 		_paletteFrames = new uint[2][];
 		_spriteFrames = new GpuSprite[2][];
@@ -128,6 +158,27 @@ public partial class GbaVideo
 			_spriteFrames[i] = new GpuSprite[MaxOamEntries];
 			_vramFrames[i] = new uint[96 * 1024 / 4];
 		}
+
+		_writeSlot = 0;
+		_readSlot = -1;
+	}
+
+	private void ClearFrameSnapshots()
+	{
+		_scanlineFrames = null;
+		_paletteFrames = null;
+		_spriteFrames = null;
+		_frameOamTotal = null;
+		_vramFrames = null;
+		_writeSlot = 0;
+		_readSlot = -1;
+	}
+
+	private void CreateGpuResources( int scale )
+	{
+		GpuScale = Math.Max( 1, scale );
+		_scaledWidth = GbaConstants.ScreenWidth * GpuScale;
+		_scaledHeight = GbaConstants.ScreenHeight * GpuScale;
 
 		_gpuScanlines = new GpuBuffer<ScanlineState>( GbaConstants.VisibleLines );
 		_gpuSprites = new GpuBuffer<GpuSprite>( MaxOamEntries );
@@ -162,15 +213,13 @@ public partial class GbaVideo
 		_csResponseTime = new ComputeShader( "shaders/postprocess/motionblur/response_time.shader" );
 		_csLcdGridV2 = new ComputeShader( "shaders/postprocess/handheld/lcd_cgwg/lcd_grid_v2.shader" );
 		_csGbaColor = new ComputeShader( "shaders/postprocess/handheld/color/gba_color.shader" );
-		_historyHead = -1;
-		_historyValidCount = 0;
-		_frameCount = 0;
 
+		ResetOriginalHistory();
 		RenderCommandList = new CommandList( "GBA PPU" );
 		GpuReady = true;
 	}
 
-	public void DisposeGpu()
+	private void DisposeGpuResources()
 	{
 		GpuReady = false;
 		_gpuScanlines?.Dispose();
@@ -570,6 +619,15 @@ public partial class GbaVideo
 
 	public bool UploadAndBuildCommandList()
 	{
+		if ( !GpuReady || RenderCommandList == null || OutputTexture == null )
+			return false;
+
+		if ( _scanlineFrames == null || _paletteFrames == null || _spriteFrames == null || _frameOamTotal == null || _vramFrames == null )
+			return false;
+
+		if ( _gpuScanlines == null || _gpuSprites == null || _gpuVram == null || _gpuPalette == null )
+			return false;
+
 		int slot = Interlocked.CompareExchange( ref _readSlot, 0, 0 );
 		if ( slot < 0 ) return false;
 
