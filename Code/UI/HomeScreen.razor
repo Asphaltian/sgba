@@ -11,11 +11,11 @@
 		<div class="home-backdrop-fallback" />
 		@if (_previousBackdrop != null)
 		{
-			<TextureImage Texture=@_previousBackdrop class="home-backdrop-image previous" style=@($"opacity: {PreviousBackdropOpacity};") />
+			<TextureImage @key=@_previousBackdrop Texture=@_previousBackdrop class="home-backdrop-image previous" style=@($"opacity: {PreviousBackdropOpacity};") />
 		}
 		@if (_currentBackdrop != null)
 		{
-			<TextureImage Texture=@_currentBackdrop class="home-backdrop-image current" style=@($"opacity: {CurrentBackdropOpacity};") />
+			<TextureImage @key=@_currentBackdrop Texture=@_currentBackdrop class="home-backdrop-image current" />
 		}
 		<div class="home-backdrop-soften" />
 		<div class="home-vignette" />
@@ -241,8 +241,6 @@
 	private const float BackdropRetainDuration = 0.32f;
 	private Texture _currentBackdrop;
 	private Texture _previousBackdrop;
-	private float _currentBackdropAge;
-	private bool _currentBackdropFading;
 	private float _previousBackdropAge;
 	private bool _previousBackdropFading;
 	private int _backdropVersion;
@@ -318,7 +316,6 @@
 	private Texture SelectedLogo => SelectedGame != null && _logos.TryGetValue(SelectedGame.Path, out var logo) ? logo : null;
 	private Texture SelectedBackdrop => SelectedGame != null && _snaps.TryGetValue(SelectedGame.Path, out var snap) ? snap : SelectedGame != null && _boxArt.TryGetValue(SelectedGame.Path, out var cover) ? cover : null;
 	private float PreviousBackdropOpacity => _previousBackdrop == null ? 0f : _previousBackdropFading ? 0f : 1f;
-	private float CurrentBackdropOpacity => _currentBackdrop == null ? 0f : _currentBackdropFading ? 1f : 0f;
 	private string AllSoftwareScrollbarThumbStyle
 	{
 		get
@@ -1550,24 +1547,10 @@
 	{
 		SyncBackdropTexture();
 
-		if (_currentBackdrop == null && _previousBackdrop == null)
-			return;
-
-		if (_currentBackdrop != null && !_currentBackdropFading)
-		{
-			_currentBackdropFading = true;
-			_backdropVersion++;
-			StateHasChanged();
-			return;
-		}
-
-		if (_currentBackdrop != null && _currentBackdropFading && _currentBackdropAge < BackdropRetainDuration)
-			_currentBackdropAge += Time.Delta;
-
 		if (_previousBackdrop == null)
 			return;
 
-		if (!_previousBackdropFading)
+		if (_currentBackdrop == null && !_previousBackdropFading)
 		{
 			_previousBackdropFading = true;
 			_backdropVersion++;
@@ -1577,9 +1560,7 @@
 
 		_previousBackdropAge += Time.Delta;
 		if (_previousBackdropAge < BackdropRetainDuration)
-		{
 			return;
-		}
 
 		_previousBackdrop = null;
 		PruneArtworkTextures();
@@ -1597,8 +1578,6 @@
 			_previousBackdrop = _currentBackdrop;
 
 		_currentBackdrop = next;
-		_currentBackdropAge = 0f;
-		_currentBackdropFading = next == null;
 		_previousBackdropAge = 0f;
 		_previousBackdropFading = false;
 		_backdropVersion++;

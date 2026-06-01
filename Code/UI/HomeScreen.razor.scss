@@ -53,12 +53,18 @@ HomeScreen
 
 	.home-backdrop-image.previous
 	{
-		z-index: 2;
+		z-index: 1;
 	}
 
 	.home-backdrop-image.current
 	{
-		z-index: 1;
+		z-index: 2;
+		opacity: 1;
+	}
+
+	.home-backdrop-image.current:intro
+	{
+		opacity: 0;
 	}
 
 	.home-backdrop-soften
