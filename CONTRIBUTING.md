@@ -1,9 +1,9 @@
-# Contributors Guidelines
+# Contributors guidelines
 
 ## Reporting Bugs
 
 Please follow these guidelines when reporting a bug:
-* Be thorough in your report. Tell us everything — what ROM you were running, what you expected, what happened instead.
+* Be thorough in your report. Tell us everything - what ROM you were running, what you expected, what happened instead.
 * If you can reproduce the bug, give us step-by-step instructions.
 * Include screenshots or short recordings if the issue is visual (rendering glitches, incorrect colors, etc.).
 * Make sure your bug hasn't already been reported.
@@ -16,13 +16,13 @@ Please follow these guidelines when requesting a feature:
 
 ## Making Changes
 
-### Fixing Bugs
+### Fixing bugs
 
 If you're fixing a bug, make sure you reference any applicable bug reports, explain what the problem was and how it was solved.
 
 Unit tests are always great where applicable.
 
-### Adding New Features
+### Adding new features
 
 Before you start trying to add a new feature, it should be something people want and has been discussed in a proposal issue ideally.
 
