@@ -9,6 +9,7 @@ public static class LobbyDataKeys
 	public const string RomSha1 = "sha1";
 	public const string Visibility = "vis";
 	public const string HostName = "host";
+	public const string Mode = "mode";
 }
 
 public static class LobbyMetadata
@@ -29,5 +30,11 @@ public static class LobbyMetadata
 	{
 		var raw = lobby.Get( LobbyDataKeys.Visibility, "0" );
 		return int.TryParse( raw, out var v ) ? (SessionVisibility)v : SessionVisibility.Public;
+	}
+
+	public static NetworkManager.SessionMode GetMode( this LobbyInformation lobby )
+	{
+		var raw = lobby.Get( LobbyDataKeys.Mode, "0" );
+		return int.TryParse( raw, out var v ) ? (NetworkManager.SessionMode)v : NetworkManager.SessionMode.WirelessAdapter;
 	}
 }

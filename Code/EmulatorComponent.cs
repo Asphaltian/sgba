@@ -9,6 +9,8 @@ public sealed partial class EmulatorComponent : Component
 	[Property, Title( "ROM Path" ), FilePath( Extension = "gba" )]
 	public string RomPath { get; set; }
 
+	public string GameCode { get; private set; }
+
 	public static EmulatorComponent Current { get; private set; }
 	public Gba Core => _coreThread?.Core;
 	public Texture ScreenTexture { get; private set; }
@@ -38,6 +40,7 @@ public sealed partial class EmulatorComponent : Component
 	private int _inputKeys = AllKeysReleased;
 	private bool _videoFramePending;
 	private bool _paused;
+	private bool _coreHalted;
 	private int _inputCooldown;
 	private bool _initCoreOnUpdate;
 	private int _initDeferFrames;
@@ -55,6 +58,9 @@ public sealed partial class EmulatorComponent : Component
 
 	public void Restart( string romPath )
 	{
+		if ( _linkedHost || _linkedClient )
+			EndLinkedMode();
+
 		TearDownCore();
 		RomPath = romPath;
 		IsReady = false;
@@ -68,6 +74,7 @@ public sealed partial class EmulatorComponent : Component
 	{
 		TearDownCore();
 		RomPath = null;
+		GameCode = null;
 		_initCoreOnUpdate = false;
 		_initDeferFrames = 0;
 	}
@@ -101,8 +108,16 @@ public sealed partial class EmulatorComponent : Component
 		_inputCooldown = 0;
 		_initDeferFrames = 0;
 		_paused = false;
+		_coreHalted = false;
 		Interlocked.Exchange( ref _inputKeys, AllKeysReleased );
 		IsReady = false;
+	}
+
+	private static string ReadGameCode( byte[] romData )
+	{
+		if ( romData == null || romData.Length < 0xB0 )
+			return null;
+		return System.Text.Encoding.ASCII.GetString( romData, 0xAC, 4 ).TrimEnd( '\0' );
 	}
 
 	private void InitCore()
@@ -124,6 +139,8 @@ public sealed partial class EmulatorComponent : Component
 				GbaLog.Write( LogCategory.GBA, LogLevel.Error, ErrorMessage );
 				return;
 			}
+
+			GameCode = ReadGameCode( romData );
 
 			Gba core = new();
 			core.LoadRom( romData );
@@ -176,9 +193,9 @@ public sealed partial class EmulatorComponent : Component
 
 		_audioStream = new SoundStream( GbaAudio.SampleRate, 2 );
 		_audioStream.WriteData( new short[GbaAudio.SamplesPerFrame * 2 * AudioPrefillFrames] );
-		_soundHandle = _audioStream.Play( volume: 1.0f );
+		_soundHandle = _audioStream.Play( volume: _paused ? 0f : 1.0f );
 		_soundHandle.SpacialBlend = 0f;
-		_soundHandle.Occlusion = false;
+		_soundHandle.OcclusionEnabled = false;
 		_soundHandle.DistanceAttenuation = false;
 		_soundHandle.AirAbsorption = false;
 		_soundHandle.Transmission = false;
@@ -194,9 +211,35 @@ public sealed partial class EmulatorComponent : Component
 
 	protected override void OnUpdate()
 	{
+		if ( _linkedClient )
+		{
+			if ( _timeSinceClientPacket > ClientHostTimeoutSeconds )
+			{
+				ResumeSoloAfterHostLost();
+				return;
+			}
+
+			PollInput();
+			TickLinkedClient();
+			RestoreAudioStreamIfNeeded();
+			return;
+		}
+
+		if ( _linkedHost )
+		{
+			RescaleGpuIfNeeded();
+			if ( _appliedReproduceClassicFeel != GamePreferences.ReproduceClassicFeel )
+				ApplyDisplaySettings();
+			PollInput();
+			TickLinkedHost();
+			RestoreAudioStreamIfNeeded();
+			return;
+		}
+
 		if ( !StartCoreWhenReady() )
 			return;
 
+		ReconcileCorePause();
 		RescaleGpuIfNeeded();
 
 		if ( _appliedReproduceClassicFeel != GamePreferences.ReproduceClassicFeel )
@@ -321,6 +364,18 @@ public sealed partial class EmulatorComponent : Component
 
 	protected override void OnPreRender()
 	{
+		if ( _linkedHost )
+		{
+			CaptureAndSendHostVideo();
+			return;
+		}
+
+		if ( _linkedClient )
+		{
+			PresentClientVideo();
+			return;
+		}
+
 		WaitForPostedCoreFrame();
 		UploadPendingVideoFrame();
 	}
@@ -416,19 +471,29 @@ public sealed partial class EmulatorComponent : Component
 	public void SetPaused( bool paused )
 	{
 		_paused = paused;
-		_coreThread?.SetPaused( paused );
+
 		if ( paused )
-		{
-			if ( _soundHandle is { IsValid: true } )
-				_soundHandle.Volume = 0;
-		}
+			Interlocked.Exchange( ref _inputKeys, AllKeysReleased );
 		else
-		{
-			ResetVideoClock();
 			_inputCooldown = 2;
-			if ( _soundHandle is { IsValid: true } )
-				_soundHandle.Volume = 1.0f;
-		}
+
+		if ( _soundHandle is { IsValid: true } )
+			_soundHandle.Volume = paused ? 0 : 1.0f;
+
+		ReconcileCorePause();
+	}
+
+	private void ReconcileCorePause()
+	{
+		bool networked = IsLinked || NetworkManager.Current?.InMultiplayerSession == true;
+		bool shouldHalt = _paused && !networked;
+		if ( shouldHalt == _coreHalted )
+			return;
+
+		_coreHalted = shouldHalt;
+		_coreThread?.SetPaused( shouldHalt );
+		if ( !shouldHalt )
+			ResetVideoClock();
 	}
 
 	public string GetStatePath( int slot ) => $"{_stateBasePath}.ss{slot}";
@@ -502,6 +567,8 @@ public sealed partial class EmulatorComponent : Component
 
 	protected override void OnDestroy()
 	{
+		if ( _linkedHost || _linkedClient )
+			EndLinkedMode();
 		TearDownCore();
 		_camera = null;
 		if ( Current == this )

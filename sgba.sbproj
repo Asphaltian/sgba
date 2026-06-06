@@ -11,7 +11,7 @@
   "Mounts": null,
   "IsStandaloneOnly": false,
   "Metadata": {
-    "MaxPlayers": 64,
+    "MaxPlayers": 5,
     "MinPlayers": 1,
     "RankType": "None",
     "CsProjName": "",

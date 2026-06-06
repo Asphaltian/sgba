@@ -23,6 +23,8 @@
 	"toast.news.message": "This feature isn't implemented yet.",
 	"toast.cloud.title": "Cloud isn't ready yet",
 	"toast.cloud.message": "This feature isn't implemented yet.",
+	"toast.missingrom.title": "Missing game",
+	"toast.missingrom.message": "You don't have the ROM the host is playing.",
 
 	"details.information": "Information",
 	"details.info.developer": "Developer:",

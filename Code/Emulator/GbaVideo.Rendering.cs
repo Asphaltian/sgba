@@ -72,7 +72,9 @@ public partial class GbaVideo
 
 	private Texture _bg0Tex, _bg1Tex, _bg2Tex, _bg3Tex;
 	private Texture _objColorTex, _objFlagsTex, _windowTex;
-	private Texture _nativeFrameTex, _classicResponseTex, _classicLcdTex, _suspendPreviewTex;
+	private Texture _nativeFrameTex, _classicResponseTex, _classicLcdTex;
+	private Texture[] _suspendPreviewTex;
+	private int _previewWriteSlot;
 	private Texture[] _originalHistoryTex;
 
 	private ComputeShader _csBgMode0, _csBgMode2, _csBgMode3, _csBgMode4, _csBgMode5;
@@ -85,14 +87,18 @@ public partial class GbaVideo
 	private int[] _frameOamTotal;
 	private uint[][] _vramFrames;
 
+	private const int FrameSlotCount = 3;
 	private int _writeSlot;
 	private int _readSlot = -1;
+	private int _readySlot = -1;
+	private int _frameReady;
+	private bool _hasFrame;
 
 	private const int MaxOamBatches = 8;
 	private const int MaxOamEntries = 128 * MaxOamBatches;
 
-	private uint[] _frameOldCharBase = new uint[2];
-	private int[] _frameOldCharBaseFirstY = new int[2];
+	private uint[][] _frameOldCharBase;
+	private int[][] _frameOldCharBaseFirstY;
 	private int _historyHead = -1;
 	private int _historyValidCount;
 	private int _frameCount;
@@ -125,21 +131,28 @@ public partial class GbaVideo
 
 	private void CreateFrameSnapshots()
 	{
-		_scanlineFrames = new ScanlineState[2][];
-		_paletteFrames = new uint[2][];
-		_spriteFrames = new GpuSprite[2][];
-		_frameOamTotal = new int[2];
-		_vramFrames = new uint[2][];
-		for ( int i = 0; i < 2; i++ )
+		_scanlineFrames = new ScanlineState[FrameSlotCount][];
+		_paletteFrames = new uint[FrameSlotCount][];
+		_spriteFrames = new GpuSprite[FrameSlotCount][];
+		_frameOamTotal = new int[FrameSlotCount];
+		_vramFrames = new uint[FrameSlotCount][];
+		_frameOldCharBase = new uint[FrameSlotCount][];
+		_frameOldCharBaseFirstY = new int[FrameSlotCount][];
+		for ( int i = 0; i < FrameSlotCount; i++ )
 		{
 			_scanlineFrames[i] = new ScanlineState[GbaConstants.VisibleLines];
 			_paletteFrames[i] = new uint[256 * GbaConstants.VisibleLines];
 			_spriteFrames[i] = new GpuSprite[MaxOamEntries];
 			_vramFrames[i] = new uint[96 * 1024 / 4];
+			_frameOldCharBase[i] = new uint[2];
+			_frameOldCharBaseFirstY[i] = new int[2];
 		}
 
 		_writeSlot = 0;
-		_readSlot = -1;
+		_readySlot = 1;
+		_readSlot = 2;
+		_frameReady = 0;
+		_hasFrame = false;
 	}
 
 	private void ClearFrameSnapshots()
@@ -149,8 +162,13 @@ public partial class GbaVideo
 		_spriteFrames = null;
 		_frameOamTotal = null;
 		_vramFrames = null;
+		_frameOldCharBase = null;
+		_frameOldCharBaseFirstY = null;
 		_writeSlot = 0;
+		_readySlot = -1;
 		_readSlot = -1;
+		_frameReady = 0;
+		_hasFrame = false;
 	}
 
 	private void CreateGpuResources( int scale )
@@ -179,7 +197,10 @@ public partial class GbaVideo
 			_originalHistoryTex[i] = CreateNativeColorRT( ImageFormat.RGBA16161616F, gpuOnly: true );
 
 		OutputTexture = CreateScaledColorRT( ImageFormat.RGBA8888, gpuOnly: true );
-		_suspendPreviewTex = CreateNativeColorRT( ImageFormat.RGBA8888 );
+		_suspendPreviewTex = new Texture[2];
+		_suspendPreviewTex[0] = CreateNativeColorRT( ImageFormat.RGBA8888 );
+		_suspendPreviewTex[1] = CreateNativeColorRT( ImageFormat.RGBA8888 );
+		_previewWriteSlot = 0;
 
 		_csBgMode0 = new ComputeShader( "shaders/gba_bg_mode0.shader" );
 		_csBgMode2 = new ComputeShader( "shaders/gba_bg_mode2.shader" );
@@ -221,7 +242,11 @@ public partial class GbaVideo
 				_originalHistoryTex[i]?.Dispose();
 		}
 		OutputTexture?.Dispose();
-		_suspendPreviewTex?.Dispose();
+		if ( _suspendPreviewTex != null )
+		{
+			for ( int i = 0; i < _suspendPreviewTex.Length; i++ )
+				_suspendPreviewTex[i]?.Dispose();
+		}
 		_bg0Tex = null;
 		_bg1Tex = null;
 		_bg2Tex = null;
@@ -235,6 +260,7 @@ public partial class GbaVideo
 		_originalHistoryTex = null;
 		OutputTexture = null;
 		_suspendPreviewTex = null;
+		_previewWriteSlot = 0;
 		RenderCommandList = null;
 	}
 
@@ -449,11 +475,11 @@ public partial class GbaVideo
 	private void CommitFrame()
 	{
 		if ( !GpuReady ) return;
-		Array.Copy( _oldCharBase, _frameOldCharBase, 2 );
-		Array.Copy( _oldCharBaseFirstY, _frameOldCharBaseFirstY, 2 );
+		Array.Copy( _oldCharBase, _frameOldCharBase[_writeSlot], 2 );
+		Array.Copy( _oldCharBaseFirstY, _frameOldCharBaseFirstY[_writeSlot], 2 );
 		_frameOamTotal[_writeSlot] = _oamBatchOffset + _oamMax;
-		Interlocked.Exchange( ref _readSlot, _writeSlot );
-		_writeSlot ^= 1;
+		_writeSlot = Interlocked.Exchange( ref _readySlot, _writeSlot );
+		Interlocked.Exchange( ref _frameReady, 1 );
 	}
 
 	private void DispatchWindowPass( CommandList cmd, Vector3 circle0, Vector3 circle1 )
@@ -497,8 +523,11 @@ public partial class GbaVideo
 		DispatchGbaColorPass( cmd, displaySource, OutputTexture, scaledSize, _scaledWidth, _scaledHeight );
 		cmd.UavBarrier( OutputTexture );
 
-		DispatchGbaColorPass( cmd, previewSource, _suspendPreviewTex, nativeSize, GbaConstants.ScreenWidth, GbaConstants.ScreenHeight );
-		cmd.UavBarrier( _suspendPreviewTex );
+		Texture preview = _suspendPreviewTex[_previewWriteSlot];
+		DispatchGbaColorPass( cmd, previewSource, preview, nativeSize, GbaConstants.ScreenWidth, GbaConstants.ScreenHeight );
+		cmd.UavBarrier( preview );
+
+		_previewWriteSlot ^= 1;
 	}
 
 	private FrameSource DispatchClassicResponsePass( CommandList cmd, FrameSource source, Vector4 nativeSize )
@@ -607,7 +636,15 @@ public partial class GbaVideo
 		if ( _gpuScanlines == null || _gpuSprites == null || _gpuVram == null || _gpuPalette == null )
 			return false;
 
-		int slot = Interlocked.CompareExchange( ref _readSlot, 0, 0 );
+		if ( Interlocked.Exchange( ref _frameReady, 0 ) == 1 )
+		{
+			_readSlot = Interlocked.Exchange( ref _readySlot, _readSlot );
+			_hasFrame = true;
+		}
+
+		if ( !_hasFrame ) return false;
+
+		int slot = _readSlot;
 		if ( slot < 0 ) return false;
 
 		var scanlines = _scanlineFrames[slot];
@@ -637,8 +674,8 @@ public partial class GbaVideo
 		DispatchWindowPass( cmd, circle0, circle1 );
 		DispatchObjPass( cmd );
 
-		cmd.Attributes.Set( "OldCharBase2", new Vector2( _frameOldCharBase[0], _frameOldCharBaseFirstY[0] ) );
-		cmd.Attributes.Set( "OldCharBase3", new Vector2( _frameOldCharBase[1], _frameOldCharBaseFirstY[1] ) );
+		cmd.Attributes.Set( "OldCharBase2", new Vector2( _frameOldCharBase[slot][0], _frameOldCharBaseFirstY[slot][0] ) );
+		cmd.Attributes.Set( "OldCharBase3", new Vector2( _frameOldCharBase[slot][1], _frameOldCharBaseFirstY[slot][1] ) );
 
 		Texture[] bgTex = [_bg0Tex, _bg1Tex, _bg2Tex, _bg3Tex];
 		for ( int bg = 0; bg < 4; bg++ )
@@ -841,7 +878,7 @@ public partial class GbaVideo
 	{
 		if ( _suspendPreviewTex == null ) return null;
 
-		var pixels = _suspendPreviewTex.GetPixels();
+		var pixels = _suspendPreviewTex[_previewWriteSlot].GetPixels();
 		var result = new byte[GbaConstants.ScreenWidth * GbaConstants.ScreenHeight * 4];
 
 		for ( int i = 0; i < pixels.Length && i * 4 + 3 < result.Length; i++ )
@@ -853,6 +890,24 @@ public partial class GbaVideo
 		}
 
 		return result;
+	}
+
+	public void CaptureScreenshotAsync( Action<byte[]> callback )
+	{
+		if ( _suspendPreviewTex == null )
+		{
+			callback?.Invoke( null );
+			return;
+		}
+
+		_suspendPreviewTex[_previewWriteSlot].GetPixelsAsync<byte>( span =>
+		{
+			int expected = GbaConstants.ScreenWidth * GbaConstants.ScreenHeight * 4;
+			var result = new byte[expected];
+			int n = Math.Min( span.Length, expected );
+			span.Slice( 0, n ).CopyTo( result );
+			callback?.Invoke( result );
+		}, ImageFormat.RGBA8888, (0, 0, GbaConstants.ScreenWidth, GbaConstants.ScreenHeight) );
 	}
 
 	private static uint PackOffset( short h, short v )

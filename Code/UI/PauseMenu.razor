@@ -4,15 +4,15 @@
 
 @inherits PanelComponent
 
-<root class="@(IsVisible ? "visible" : "") @(_showConfirmDialog ? "confirm-open" : "") @(_showSavingDialog ? "saving-open" : "")">
+<root class="@(IsVisible ? "visible" : "") @(_showConfirmDialog ? "confirm-open" : "") @(_showSavingDialog ? "saving-open" : "") @(InNetworkedSession ? "networked" : "")">
 	<div class="overlay">
 		<div class="menu-container">
 			<div class="menu-left @(_inSlotPanel ? "in-slots" : "")">
-				@for (int i = 0; i < MenuItems.Length; i++)
+				@for (int i = 0; i < ActiveMenuItems.Length; i++)
 				{
 					var idx = i;
 					<div class="menu-item @(idx == _selectedIndex ? "selected" : "")" onmouseenter=@(() => SelectItem(idx)) onclick=@(() => ActivateItemWithMouse(idx))>
-						@MenuItems[idx]
+						@ActiveMenuItems[idx]
 					</div>
 				}
 			</div>
@@ -81,9 +81,19 @@
 		"#pause.home"
 	];
 
+	private static readonly string[] ClientMenuItems =
+	[
+		"#pause.continue",
+		"#pause.controls",
+		"#pause.home"
+	];
+
+	private static bool InNetworkedSession => NetworkManager.Current?.InMultiplayerSession == true;
+	private string[] ActiveMenuItems => InNetworkedSession ? ClientMenuItems : MenuItems;
+
 	public bool IsVisible { get; private set; }
 	private int _selectedIndex;
-	private string SelectedKey => _selectedIndex >= 0 && _selectedIndex < MenuItems.Length ? MenuItems[_selectedIndex] : null;
+	private string SelectedKey => _selectedIndex >= 0 && _selectedIndex < ActiveMenuItems.Length ? ActiveMenuItems[_selectedIndex] : null;
 	private bool HasSlotPanel => SelectedKey is "#pause.load" or "#pause.create";
 	private bool IsLoadMode => SelectedKey == "#pause.load";
 
@@ -182,7 +192,7 @@
 		if (_inSlotPanel)
 			_highlightedSlot = _highlightedSlot <= 1 ? GbaSerialize.SlotCount : _highlightedSlot - 1;
 		else
-			_selectedIndex = _selectedIndex <= 0 ? MenuItems.Length - 1 : _selectedIndex - 1;
+			_selectedIndex = _selectedIndex <= 0 ? ActiveMenuItems.Length - 1 : _selectedIndex - 1;
 	}
 
 	private void NavigateDown()
@@ -193,7 +203,7 @@
 		if (_inSlotPanel)
 			_highlightedSlot = _highlightedSlot >= GbaSerialize.SlotCount ? 1 : _highlightedSlot + 1;
 		else
-			_selectedIndex = _selectedIndex >= MenuItems.Length - 1 ? 0 : _selectedIndex + 1;
+			_selectedIndex = _selectedIndex >= ActiveMenuItems.Length - 1 ? 0 : _selectedIndex + 1;
 	}
 
 	private void EnterSlotPanel()
@@ -276,9 +286,9 @@
 
 	private void ActivateItem(int index)
 	{
-		if (index < 0 || index >= MenuItems.Length) return;
+		if (index < 0 || index >= ActiveMenuItems.Length) return;
 
-		switch (MenuItems[index])
+		switch (ActiveMenuItems[index])
 		{
 			case "#pause.continue":
 				Resume();
@@ -301,6 +311,7 @@
 				_inSlotPanel = false;
 				Mouse.Visibility = MouseVisibility.Hidden;
 				Sound.Play("ui.popup.message.close");
+				NetworkManager.Current?.Leave();
 				HomeScreen.Current?.Show();
 				break;
 		}
@@ -437,7 +448,7 @@
 		return HashCode.Combine(
 			IsVisible, _selectedIndex, _inSlotPanel, _highlightedSlot,
 			_input.UseGamepad, _slotVersion, _showConfirmDialog,
-			HashCode.Combine(_confirmSelection, _showSavingDialog)
+			HashCode.Combine(_confirmSelection, _showSavingDialog, InNetworkedSession)
 		);
 	}
 

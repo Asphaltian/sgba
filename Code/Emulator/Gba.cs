@@ -66,6 +66,9 @@ public class Gba
 		FrameCounter = 0;
 		TotalCycles = 0;
 		IsRunning = true;
+		_frameInProgress = false;
+		_frameLine = 0;
+		_framePhase = 0;
 	}
 
 	public void RunFrame()
@@ -92,6 +95,61 @@ public class Gba
 
 		FrameCounter++;
 		TotalCycles += GbaConstants.VideoTotalLength;
+	}
+
+	private bool _frameInProgress;
+	private long _frameBase;
+	private int _frameLine;
+	private int _framePhase;
+
+	public bool FrameInProgress => _frameInProgress;
+
+	public bool StepFrame()
+	{
+		if ( !IsRunning ) return false;
+		if ( Io.LockstepBlocked ) return false;
+
+		if ( !_frameInProgress )
+		{
+			Audio.BeginFrame();
+			Io.TestKeypadIrq();
+			_frameBase = Cpu.Cycles;
+			_frameLine = 0;
+			_framePhase = 0;
+			_frameInProgress = true;
+		}
+
+		while ( _frameLine < GbaConstants.VideoVerticalTotalPixels )
+		{
+			long lineBase = _frameBase + (long)_frameLine * GbaConstants.VideoHorizontalLength;
+
+			if ( _framePhase == 0 )
+			{
+				long target = lineBase + GbaConstants.VideoHDrawLength;
+				RunCpuTo( target );
+				if ( Cpu.Cycles < target )
+					return false;
+				Video.StartHBlank();
+				_framePhase = 1;
+			}
+
+			long lineEnd = lineBase + GbaConstants.VideoHorizontalLength;
+			RunCpuTo( lineEnd );
+			if ( Cpu.Cycles < lineEnd )
+				return false;
+			Video.StartHDraw();
+			_framePhase = 0;
+			_frameLine++;
+		}
+
+		long frameEnd = _frameBase + GbaConstants.VideoTotalLength;
+		if ( Cpu.Cycles < frameEnd )
+			Cpu.Cycles = frameEnd;
+
+		FrameCounter++;
+		TotalCycles += GbaConstants.VideoTotalLength;
+		_frameInProgress = false;
+		return true;
 	}
 
 	public void ProcessEvents( long startCycle, long endCycle )
@@ -146,7 +204,7 @@ public class Gba
 
 	private bool HasDueEvents( long cycle )
 	{
-		return Io.NextIrqEvent <= cycle || Timers.NextGlobalEvent <= cycle || Io.NextSioEvent <= cycle;
+		return Io.NextIrqEvent <= cycle || Timers.NextGlobalEvent <= cycle || Io.NextSioEvent <= cycle || Io.NextDriverEvent <= cycle;
 	}
 
 	private long GetNextEvent( long defaultCycle )
@@ -156,6 +214,8 @@ public class Gba
 			nextEvent = Io.NextIrqEvent;
 		if ( Io.NextSioEvent < nextEvent )
 			nextEvent = Io.NextSioEvent;
+		if ( Io.NextDriverEvent < nextEvent )
+			nextEvent = Io.NextDriverEvent;
 		if ( Timers.NextGlobalEvent < nextEvent )
 			nextEvent = Timers.NextGlobalEvent;
 		return nextEvent;
@@ -190,6 +250,12 @@ public class Gba
 					processedEvent = true;
 				}
 
+				if ( Io.NextDriverEvent <= Cpu.Cycles )
+				{
+					Io.ProcessDriverEvent();
+					processedEvent = true;
+				}
+
 				if ( !processedEvent )
 					return processedAny;
 
@@ -206,6 +272,14 @@ public class Gba
 	{
 		while ( Cpu.Cycles < target )
 		{
+			if ( Io.LockstepBlocked )
+			{
+				if ( Io.NextDriverEvent <= Cpu.Cycles )
+					Io.ProcessDriverEvent();
+				if ( Io.LockstepBlocked )
+					return;
+			}
+
 			if ( Dma.ActiveDma >= 0 )
 			{
 				ProcessDma( target );
@@ -247,6 +321,9 @@ public class Gba
 	{
 		while ( Cpu.Cycles < target && Cpu.Halted )
 		{
+			if ( Io.LockstepBlocked )
+				return;
+
 			long nextEvent = GetNextEvent( target );
 			if ( Dma.ActiveDma >= 0 )
 				nextEvent = Math.Min( nextEvent, Dma.Channels[Dma.ActiveDma].When );

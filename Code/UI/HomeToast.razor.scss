@@ -14,14 +14,14 @@ HomeToast
 
 	.toast-pill
 	{
-		width: 350px;
+		width: auto;
 		height: 72px;
 		border-radius: 36px;
 		background-color: rgba( 242, 244, 247, 0.96 );
 		box-shadow: 0 10px 34px rgba( 0, 0, 0, 0.38 );
 		flex-direction: row;
 		align-items: center;
-		padding: 0 18px;
+		padding: 0 32px 0 18px;
 		gap: 12px;
 	}
 
@@ -67,34 +67,24 @@ HomeToast
 
 	.toast-text
 	{
-		width: 0;
-		min-width: 0;
-		flex-grow: 1;
-		height: 48px;
 		flex-direction: column;
-		gap: 0;
+		gap: 2px;
 		justify-content: center;
 		align-items: flex-start;
 	}
 
 	.toast-title
 	{
-		width: 100%;
 		font-size: 19px;
 		font-weight: 600;
-		height: 26px;
-		align-items: center;
 		color: #20242a;
 		white-space: nowrap;
 	}
 
 	.toast-message
 	{
-		width: 100%;
 		font-size: 14px;
 		font-weight: 400;
-		height: 22px;
-		align-items: center;
 		color: rgba( 32, 36, 42, 0.64 );
 		white-space: nowrap;
 	}

@@ -118,10 +118,13 @@ public partial class ArmCore
 
 		while ( Cycles < targetCycles )
 		{
+			if ( Gba.Io.LockstepBlocked )
+				return;
+
 			long cyclesBefore = Cycles;
 			Gba.ProcessEvents( Cycles, Cycles );
 
-			if ( Halted || CrashDetected || (dma.ActiveDma >= 0 && dma.Channels[dma.ActiveDma].When <= Cycles) )
+			if ( Gba.Io.LockstepBlocked || Halted || CrashDetected || (dma.ActiveDma >= 0 && dma.Channels[dma.ActiveDma].When <= Cycles) )
 				return;
 
 			if ( _prefetchFlushed )
@@ -131,7 +134,7 @@ public partial class ArmCore
 				_prefetchFlushed = false;
 				Gba.ProcessEvents( flushStart, Cycles );
 
-				if ( Halted || CrashDetected || (dma.ActiveDma >= 0 && dma.Channels[dma.ActiveDma].When <= Cycles) )
+				if ( Gba.Io.LockstepBlocked || Halted || CrashDetected || (dma.ActiveDma >= 0 && dma.Channels[dma.ActiveDma].When <= Cycles) )
 					return;
 
 				continue;
@@ -146,7 +149,7 @@ public partial class ArmCore
 				_prefetchFlushed = false;
 				Gba.ProcessEvents( irqStart, Cycles );
 
-				if ( Halted || CrashDetected || (dma.ActiveDma >= 0 && dma.Channels[dma.ActiveDma].When <= Cycles) )
+				if ( Gba.Io.LockstepBlocked || Halted || CrashDetected || (dma.ActiveDma >= 0 && dma.Channels[dma.ActiveDma].When <= Cycles) )
 					return;
 
 				continue;
@@ -181,7 +184,7 @@ public partial class ArmCore
 
 			Gba.ProcessEvents( cyclesBefore, Cycles );
 
-			if ( Halted || CrashDetected )
+			if ( Gba.Io.LockstepBlocked || Halted || CrashDetected )
 				return;
 
 			if ( dma.ActiveDma >= 0 && dma.Channels[dma.ActiveDma].When <= Cycles )

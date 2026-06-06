@@ -207,6 +207,32 @@ PauseMenu
 		transition: opacity 0.2s ease;
 	}
 
+	&.networked
+	{
+		.menu-divider,
+		.menu-right
+		{
+			display: none;
+		}
+
+		.menu-container
+		{
+			justify-content: center;
+		}
+
+		.menu-left
+		{
+			align-items: center;
+			justify-content: center;
+		}
+
+		.menu-item
+		{
+			text-align: center;
+			justify-content: center;
+		}
+	}
+
 	.dialog-overlay
 	{
 		position: absolute;

@@ -32,7 +32,13 @@ public class GbaIo
 	private const int SioModeGpio = 8;
 	private const int SioModeJoybus = 12;
 
-	private static readonly int[] SioCyclesPerTransfer = { 31976, 8378, 5750, 3140 };
+	private static readonly int[,] SioCyclesPerTransferMulti =
+	{
+		{ 31976, 63427, 94884, 125829 },
+		{ 8378, 16241, 24104, 31457 },
+		{ 5750, 10998, 16241, 20972 },
+		{ 3140, 5755, 8376, 10486 },
+	};
 
 	private const int WirelessPollCycles = 4096;
 
@@ -40,12 +46,71 @@ public class GbaIo
 
 	public GbaWirelessAdapter WirelessAdapter { get; }
 
+	public IGbaSioDriver SioDriver { get; private set; }
+
+	public GbaSioMode SioMode => (GbaSioMode)_sioMode;
+
+	public ushort SioCnt { get => _sioCnt; set => _sioCnt = value; }
+
+	public ushort GetSioReg( int index ) => _sioRegs[index];
+
+	public void ScheduleSioCompletion( long absoluteCycle )
+	{
+		_sioCompletionCycle = absoluteCycle;
+		_sioPollingWireless = false;
+	}
+
+	private long _driverEventCycle = long.MaxValue;
+	internal Action<int> DriverEventCallback;
+
+	public bool LockstepBlocked { get; set; }
+
+	public long NextDriverEvent => _driverEventCycle;
+	public bool IsDriverEventScheduled => _driverEventCycle != long.MaxValue;
+
+	public void ScheduleDriverEventIn( long relativeCycles )
+	{
+		if ( relativeCycles < 0 ) relativeCycles = 0;
+		_driverEventCycle = Gba.Cpu.Cycles + relativeCycles;
+	}
+
+	public void DescheduleDriverEvent()
+	{
+		_driverEventCycle = long.MaxValue;
+	}
+
+	public void ProcessDriverEvent()
+	{
+		if ( _driverEventCycle == long.MaxValue ) return;
+		if ( Gba.Cpu.Cycles < _driverEventCycle ) return;
+
+		int cyclesLate = (int)(Gba.Cpu.Cycles - _driverEventCycle);
+		_driverEventCycle = long.MaxValue;
+		DriverEventCallback?.Invoke( cyclesLate );
+	}
+
 	private bool _sioPollingWireless;
 
 	public GbaIo( Gba gba )
 	{
 		Gba = gba;
 		WirelessAdapter = new GbaWirelessAdapter( gba );
+	}
+
+	public void SetSioDriver( IGbaSioDriver driver )
+	{
+		if ( SioDriver != null )
+			SioDriver.Deinit();
+		SioDriver = driver;
+		if ( driver != null )
+		{
+			driver.Sio = this;
+			if ( !driver.Init() )
+			{
+				driver.Deinit();
+				SioDriver = null;
+			}
+		}
 	}
 
 	public void Reset()
@@ -62,9 +127,12 @@ public class GbaIo
 		_sioCompletionCycle = long.MaxValue;
 		_sioPollingWireless = false;
 		WirelessAdapter.Reset();
+		SioDriver?.Reset();
 		PostFlg = 0;
 		_irqFireCycle = long.MaxValue;
 		_irqRearmDelay = 0;
+		_driverEventCycle = long.MaxValue;
+		LockstepBlocked = false;
 		InitializeRegisters();
 	}
 
@@ -148,13 +216,17 @@ public class GbaIo
 		}
 	}
 
-	private int SioTransferCycles()
+	public int SioTransferCyclesForLockstep( int connected ) => SioTransferCycles( connected );
+
+	private int SioTransferCycles( int connected = 0 )
 	{
 		const int CpuFreq = 16777216;
+		if ( connected < 0 ) connected = 0;
+		if ( connected > 3 ) connected = 3;
 		switch ( _sioMode )
 		{
 			case SioModeMulti:
-				return SioCyclesPerTransfer[_sioCnt & 3];
+				return SioCyclesPerTransferMulti[_sioCnt & 3, connected];
 			case SioModeNormal8:
 				return 8 * CpuFreq / (((_sioCnt & 0x0001) != 0 ? 2048 : 256) * 1024);
 			case SioModeNormal32:
@@ -172,6 +244,12 @@ public class GbaIo
 		int cyclesLate = (int)(Gba.Cpu.Cycles - _sioCompletionCycle);
 		long scheduled = _sioCompletionCycle;
 		_sioCompletionCycle = long.MaxValue;
+
+		if ( SioDriver != null && !_sioPollingWireless )
+		{
+			FinishSioTransferDriver( cyclesLate );
+			return;
+		}
 
 		if ( _sioPollingWireless )
 		{
@@ -220,6 +298,50 @@ public class GbaIo
 				if ( (_sioCnt & 0x4000) != 0 )
 					RaiseIrq( GbaIrq.Sio, cyclesLate );
 				ScheduleWirelessPoll();
+				break;
+		}
+	}
+
+	private readonly ushort[] _sioFinishMulti = new ushort[4];
+
+	private void FinishSioTransferDriver( int cyclesLate )
+	{
+		switch ( _sioMode )
+		{
+			case SioModeMulti:
+				_sioFinishMulti[0] = 0xFFFF;
+				_sioFinishMulti[1] = 0xFFFF;
+				_sioFinishMulti[2] = 0xFFFF;
+				_sioFinishMulti[3] = 0xFFFF;
+				SioDriver.FinishMultiplayer( _sioFinishMulti );
+				_sioRegs[0] = _sioFinishMulti[0];
+				_sioRegs[1] = _sioFinishMulti[1];
+				_sioRegs[2] = _sioFinishMulti[2];
+				_sioRegs[3] = _sioFinishMulti[3];
+				_sioCnt &= unchecked((ushort)~0x0080);
+				_sioCnt = (ushort)((_sioCnt & ~0x0030) | ((SioDriver.DeviceId() & 3) << 4));
+				Rcnt |= 0x0001;
+				if ( (_sioCnt & 0x4000) != 0 )
+					RaiseIrq( GbaIrq.Sio, cyclesLate );
+				break;
+			case SioModeNormal8:
+				{
+					byte data = SioDriver.FinishNormal8();
+					_sioCnt &= unchecked((ushort)~0x0080);
+					_sioRegs[5] = data;
+					if ( (_sioCnt & 0x4000) != 0 )
+						RaiseIrq( GbaIrq.Sio, cyclesLate );
+				}
+				break;
+			case SioModeNormal32:
+				{
+					uint data = SioDriver.FinishNormal32();
+					_sioCnt &= unchecked((ushort)~0x0080);
+					_sioRegs[0] = (ushort)(data & 0xFFFF);
+					_sioRegs[1] = (ushort)(data >> 16);
+					if ( (_sioCnt & 0x4000) != 0 )
+						RaiseIrq( GbaIrq.Sio, cyclesLate );
+				}
 				break;
 		}
 	}
@@ -302,8 +424,15 @@ public class GbaIo
 		if ( newMode != _sioMode )
 		{
 			_sioMode = newMode;
+			SioDriver?.SetMode( (GbaSioMode)newMode );
 			if ( newMode == SioModeMulti )
-				Rcnt &= unchecked((ushort)~0x0004);
+			{
+				int id = SioDriver?.DeviceId() ?? 0;
+				if ( id != 0 )
+					Rcnt |= 0x0004;
+				else
+					Rcnt &= unchecked((ushort)~0x0004);
+			}
 		}
 	}
 
@@ -312,7 +441,15 @@ public class GbaIo
 		ushort oldRcnt = Rcnt;
 		Rcnt = (ushort)((Rcnt & 0x1FF) | (value & 0xC000));
 		SwitchSioMode();
-		if ( _sioMode == SioModeGpio )
+		if ( SioDriver != null )
+		{
+			ushort driven = SioDriver.WriteRcnt( value );
+			if ( _sioMode == SioModeGpio )
+				Rcnt = (ushort)((driven & 0x01FF) | (Rcnt & 0xC000));
+			else
+				Rcnt = (ushort)((driven & 0x01F0) | (Rcnt & 0xC00F));
+		}
+		else if ( _sioMode == SioModeGpio )
 			Rcnt = (ushort)((Rcnt & 0xC000) | (value & 0x1FF));
 		else
 			Rcnt = (ushort)((Rcnt & 0xC00F) | (value & 0x1F0));
@@ -329,6 +466,12 @@ public class GbaIo
 		{
 			_sioCnt = (ushort)(value & 0x3000);
 			SwitchSioMode();
+		}
+
+		if ( SioDriver != null )
+		{
+			WriteSioCntDriver( value );
+			return;
 		}
 
 		switch ( _sioMode )
@@ -380,6 +523,80 @@ public class GbaIo
 		}
 
 		_sioCnt = value;
+	}
+
+	private void WriteSioCntDriver( ushort value )
+	{
+		int id = 0;
+		int connected = 0;
+		bool handled = SioDriver.HandlesMode( (GbaSioMode)_sioMode );
+		if ( handled )
+		{
+			id = SioDriver.DeviceId();
+			connected = SioDriver.ConnectedDevices();
+		}
+
+		switch ( _sioMode )
+		{
+			case SioModeMulti:
+				value &= 0xFF83;
+				if ( id != 0 || connected == 0 )
+					value |= 0x0004;
+				else
+					value &= unchecked((ushort)~0x0004);
+				value = (ushort)((value & ~0x0030) | ((id & 3) << 4));
+				value |= (ushort)(_sioCnt & 0x00FC);
+				Rcnt |= 0x0001;
+
+				if ( (value & 0x0080) != 0 && (_sioCnt & 0x0080) == 0 )
+				{
+					if ( id == 0 )
+					{
+						_sioRegs[0] = 0xFFFF;
+						_sioRegs[1] = 0xFFFF;
+						_sioRegs[2] = 0xFFFF;
+						_sioRegs[3] = 0xFFFF;
+						Rcnt &= unchecked((ushort)~0x0001);
+						StartTransfer( connected );
+					}
+				}
+				break;
+			case SioModeNormal8:
+			case SioModeNormal32:
+				if ( (value & 0x0001) != 0 )
+					Rcnt |= 0x0001;
+				if ( (value & 0x0080) != 0 && (_sioCnt & 0x0080) == 0 )
+					StartTransfer( connected );
+				break;
+		}
+
+		if ( handled )
+		{
+			value = SioDriver.WriteSioCnt( value );
+		}
+		else
+		{
+			switch ( _sioMode )
+			{
+				case SioModeNormal8:
+				case SioModeNormal32:
+					value |= 0x0004;
+					break;
+				case SioModeMulti:
+					value |= 0x0008;
+					break;
+			}
+		}
+
+		_sioCnt = value;
+	}
+
+	private void StartTransfer( int connected )
+	{
+		if ( SioDriver != null && !SioDriver.Start() )
+			return;
+		_sioCompletionCycle = Gba.Cpu.Cycles + SioTransferCycles( connected );
+		_sioPollingWireless = false;
 	}
 
 	private void WriteSioRegister( uint offset, ushort value )

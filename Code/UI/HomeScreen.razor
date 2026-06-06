@@ -1626,6 +1626,12 @@
 		StateHasChanged();
 	}
 
+	public void ShowToast(string title, string message, string icon = "info", string colorClass = "blue")
+	{
+		_toast.Show(title, message, icon, colorClass);
+		StateHasChanged();
+	}
+
 	private void UpdateToast()
 	{
 		if (!_toast.IsRunning)
