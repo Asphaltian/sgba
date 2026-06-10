@@ -1,0 +1,24 @@
+@using Sandbox.UI
+
+@namespace sGBA
+
+@inherits Panel
+
+<root class="selected-logo">
+	@if (Logo != null)
+	{
+		<TextureImage Texture=@Logo class="selected-logo-art" />
+	}
+	else
+	{
+		<div class="selected-logo-text">@Title</div>
+	}
+</root>
+
+@code
+{
+	[Parameter] public Texture Logo { get; set; }
+	[Parameter] public string Title { get; set; }
+
+	protected override int BuildHash() => HashCode.Combine( Logo, Title );
+}

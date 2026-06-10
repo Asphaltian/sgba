@@ -13,11 +13,20 @@ public class GbaDmaController
 	public bool CpuBlocked;
 	public int PerformingDma;
 
+	private readonly GbaTimingEvent _event;
+
 	public GbaDmaController( Gba gba )
 	{
 		Gba = gba;
 		for ( int i = 0; i < 4; i++ )
 			Channels[i] = new GbaDma( i );
+		_event = new GbaTimingEvent( OnDmaEvent, 7, "dma" );
+	}
+
+	private void OnDmaEvent( long late )
+	{
+		if ( ActiveDma >= 0 )
+			Gba.Cpu.Cycles += ServiceUnit();
 	}
 
 	public void Reset()
@@ -89,10 +98,10 @@ public class GbaDmaController
 		c.DestOffset = OffsetDir[(control >> 5) & 3] * (int)width;
 	}
 
-	public void OnHBlank() => TriggerByTiming( 2 );
-	public void OnVBlank() => TriggerByTiming( 1 );
+	public void OnHBlank( long cyclesLate = 0 ) => TriggerByTiming( 2, cyclesLate );
+	public void OnVBlank( long cyclesLate = 0 ) => TriggerByTiming( 1, cyclesLate );
 
-	private void TriggerByTiming( int timing )
+	private void TriggerByTiming( int timing, long cyclesLate )
 	{
 		bool found = false;
 		for ( int i = 0; i < 4; i++ )
@@ -101,7 +110,7 @@ public class GbaDmaController
 			if ( (c.Reg & 0x8000) == 0 ) continue;
 			if ( ((c.Reg >> 12) & 3) != timing ) continue;
 
-			c.When = Gba.Cpu.Cycles + 3;
+			c.When = Gba.Cpu.Cycles + 3 - cyclesLate;
 			if ( c.NextCount == 0 )
 			{
 				c.NextCount = c.Count;
@@ -113,13 +122,13 @@ public class GbaDmaController
 		if ( found ) Update();
 	}
 
-	public void OnDisplayStart()
+	public void OnDisplayStart( long cyclesLate = 0 )
 	{
 		var c = Channels[3];
 		if ( (c.Reg & 0x8000) == 0 ) return;
 		if ( ((c.Reg >> 12) & 3) != 3 ) return;
 
-		c.When = Gba.Cpu.Cycles + 3;
+		c.When = Gba.Cpu.Cycles + 3 - cyclesLate;
 		if ( c.NextCount == 0 )
 		{
 			c.NextCount = c.Count;
@@ -160,7 +169,14 @@ public class GbaDmaController
 
 		ActiveDma = best;
 		if ( best < 0 )
+		{
 			CpuBlocked = false;
+			Gba.Timing.Deschedule( _event );
+		}
+		else
+		{
+			Gba.Timing.Schedule( _event, bestTime );
+		}
 	}
 
 	public int ServiceUnit()
@@ -179,7 +195,7 @@ public class GbaDmaController
 		Gba.Cpu.InstructionStartCycles = Gba.Cpu.Cycles;
 
 		int cycles = 2 + CalculateAccessCycles( ch, width, srcRegion, dstRegion, source );
-		ch.When += cycles;
+		ch.When = Gba.Cpu.Cycles + cycles;
 
 		TransferUnit( ch, width, source, dest, srcRegion, dstRegion );
 		AdvanceAddresses( ch, width, source, dest, srcRegion, dstRegion );

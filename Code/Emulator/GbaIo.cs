@@ -15,7 +15,18 @@ public class GbaIo
 	public byte PostFlg;
 
 	private const int IrqDelayBase = 7;
-	private long _irqFireCycle = long.MaxValue;
+	private GbaTimingEvent _irqEvent;
+	private long IrqFireCycle
+	{
+		get => _irqEvent.Scheduled ? _irqEvent.When : long.MaxValue;
+		set
+		{
+			if ( value == long.MaxValue )
+				Gba.Timing.Deschedule( _irqEvent );
+			else
+				Gba.Timing.Schedule( _irqEvent, value );
+		}
+	}
 	private int _irqRearmDelay;
 
 	private ushort _fifoALatch;
@@ -23,7 +34,18 @@ public class GbaIo
 	private ushort _sioCnt;
 	private readonly ushort[] _sioRegs = new ushort[30];
 	private int _sioMode = SioModeGpio;
-	private long _sioCompletionCycle = long.MaxValue;
+	private GbaTimingEvent _sioEvent;
+	private long SioCompletionCycle
+	{
+		get => _sioEvent.Scheduled ? _sioEvent.When : long.MaxValue;
+		set
+		{
+			if ( value == long.MaxValue )
+				Gba.Timing.Deschedule( _sioEvent );
+			else
+				Gba.Timing.Schedule( _sioEvent, value );
+		}
+	}
 
 	private const int SioModeNormal8 = 0;
 	private const int SioModeNormal32 = 1;
@@ -42,7 +64,7 @@ public class GbaIo
 
 	private const int WirelessPollCycles = 4096;
 
-	public long NextSioEvent => _sioCompletionCycle;
+	public long NextSioEvent => SioCompletionCycle;
 
 	public GbaWirelessAdapter WirelessAdapter { get; }
 
@@ -56,36 +78,47 @@ public class GbaIo
 
 	public void ScheduleSioCompletion( long absoluteCycle )
 	{
-		_sioCompletionCycle = absoluteCycle;
+		SioCompletionCycle = absoluteCycle;
 		_sioPollingWireless = false;
 	}
 
-	private long _driverEventCycle = long.MaxValue;
+	private GbaTimingEvent _driverEvent;
+	private long DriverEventCycle
+	{
+		get => _driverEvent.Scheduled ? _driverEvent.When : long.MaxValue;
+		set
+		{
+			if ( value == long.MaxValue )
+				Gba.Timing.Deschedule( _driverEvent );
+			else
+				Gba.Timing.Schedule( _driverEvent, value );
+		}
+	}
 	internal Action<int> DriverEventCallback;
 
 	public bool LockstepBlocked { get; set; }
 
-	public long NextDriverEvent => _driverEventCycle;
-	public bool IsDriverEventScheduled => _driverEventCycle != long.MaxValue;
+	public long NextDriverEvent => DriverEventCycle;
+	public bool IsDriverEventScheduled => DriverEventCycle != long.MaxValue;
 
 	public void ScheduleDriverEventIn( long relativeCycles )
 	{
 		if ( relativeCycles < 0 ) relativeCycles = 0;
-		_driverEventCycle = Gba.Cpu.Cycles + relativeCycles;
+		DriverEventCycle = Gba.Cpu.Cycles + relativeCycles;
 	}
 
 	public void DescheduleDriverEvent()
 	{
-		_driverEventCycle = long.MaxValue;
+		DriverEventCycle = long.MaxValue;
 	}
 
 	public void ProcessDriverEvent()
 	{
-		if ( _driverEventCycle == long.MaxValue ) return;
-		if ( Gba.Cpu.Cycles < _driverEventCycle ) return;
+		if ( DriverEventCycle == long.MaxValue ) return;
+		if ( Gba.Cpu.Cycles < DriverEventCycle ) return;
 
-		int cyclesLate = (int)(Gba.Cpu.Cycles - _driverEventCycle);
-		_driverEventCycle = long.MaxValue;
+		int cyclesLate = (int)(Gba.Cpu.Cycles - DriverEventCycle);
+		DriverEventCycle = long.MaxValue;
 		DriverEventCallback?.Invoke( cyclesLate );
 	}
 
@@ -95,6 +128,24 @@ public class GbaIo
 	{
 		Gba = gba;
 		WirelessAdapter = new GbaWirelessAdapter( gba );
+		_irqEvent = new GbaTimingEvent( OnIrqEvent, 0, "irq" );
+		_sioEvent = new GbaTimingEvent( OnSioEvent, 2, "sio" );
+		_driverEvent = new GbaTimingEvent( OnDriverEvent, 3, "driver" );
+	}
+
+	private void OnDriverEvent( long late )
+	{
+		DriverEventCallback?.Invoke( (int)late );
+	}
+
+	private void OnIrqEvent( long late )
+	{
+		Gba.Cpu.Halted = false;
+		if ( IME != 0 && (IE & IF) != 0 && !Gba.Cpu.IrqDisable )
+		{
+			Gba.Cpu.IrqPending = true;
+			_irqRearmDelay = 2;
+		}
 	}
 
 	public void SetSioDriver( IGbaSioDriver driver )
@@ -124,14 +175,14 @@ public class GbaIo
 		_sioCnt = 0;
 		Array.Clear( _sioRegs );
 		_sioMode = SioModeGpio;
-		_sioCompletionCycle = long.MaxValue;
+		SioCompletionCycle = long.MaxValue;
 		_sioPollingWireless = false;
 		WirelessAdapter.Reset();
 		SioDriver?.Reset();
 		PostFlg = 0;
-		_irqFireCycle = long.MaxValue;
+		IrqFireCycle = long.MaxValue;
 		_irqRearmDelay = 0;
-		_driverEventCycle = long.MaxValue;
+		DriverEventCycle = long.MaxValue;
 		LockstepBlocked = false;
 		InitializeRegisters();
 	}
@@ -174,33 +225,17 @@ public class GbaIo
 			Gba.Memory.Store16( 0x03007FF8, biosIF );
 		}
 
-		if ( (IE & IF) != 0 && _irqFireCycle == long.MaxValue )
+		if ( (IE & IF) != 0 && IrqFireCycle == long.MaxValue )
 		{
-			_irqFireCycle = Gba.Cpu.Cycles + _irqRearmDelay - cyclesLate + IrqDelayBase;
+			IrqFireCycle = Gba.Cpu.Cycles + _irqRearmDelay - cyclesLate + IrqDelayBase;
 		}
 	}
 
-	public long NextIrqEvent => _irqFireCycle;
+	public long NextIrqEvent => IrqFireCycle;
 
 	public void BeginEventProcessing()
 	{
 		_irqRearmDelay = 0;
-	}
-
-	public void ProcessIrqEvent()
-	{
-		if ( _irqFireCycle == long.MaxValue ) return;
-
-		if ( Gba.Cpu.Cycles >= _irqFireCycle )
-		{
-			_irqFireCycle = long.MaxValue;
-			Gba.Cpu.Halted = false;
-			if ( IME != 0 && (IE & IF) != 0 && !Gba.Cpu.IrqDisable )
-			{
-				Gba.Cpu.IrqPending = true;
-				_irqRearmDelay = 2;
-			}
-		}
 	}
 
 	public void EndEventProcessing()
@@ -210,9 +245,9 @@ public class GbaIo
 
 	public void TestIrq( int cyclesLate = 0 )
 	{
-		if ( (IE & IF) != 0 && _irqFireCycle == long.MaxValue )
+		if ( (IE & IF) != 0 && IrqFireCycle == long.MaxValue )
 		{
-			_irqFireCycle = Gba.Cpu.InstructionStartCycles + IrqDelayBase - cyclesLate;
+			IrqFireCycle = Gba.Cpu.InstructionStartCycles + IrqDelayBase - cyclesLate;
 		}
 	}
 
@@ -236,14 +271,10 @@ public class GbaIo
 		}
 	}
 
-	public void FinishSioTransfer()
+	private void OnSioEvent( long late )
 	{
-		if ( _sioCompletionCycle == long.MaxValue ) return;
-		if ( Gba.Cpu.Cycles < _sioCompletionCycle ) return;
-
-		int cyclesLate = (int)(Gba.Cpu.Cycles - _sioCompletionCycle);
-		long scheduled = _sioCompletionCycle;
-		_sioCompletionCycle = long.MaxValue;
+		int cyclesLate = (int)late;
+		long scheduled = Gba.Cpu.Cycles - late;
 
 		if ( SioDriver != null && !_sioPollingWireless )
 		{
@@ -348,14 +379,14 @@ public class GbaIo
 
 	private void ScheduleWirelessPoll()
 	{
-		if ( _sioCompletionCycle != long.MaxValue || !WirelessAdapter.IsActive )
+		if ( SioCompletionCycle != long.MaxValue || !WirelessAdapter.IsActive )
 			return;
 
 		var state = WirelessAdapter.SpiState;
 		if ( state != GbaWirelessAdapter.ComState.WaitEvent && state != GbaWirelessAdapter.ComState.WaitResponse )
 			return;
 
-		_sioCompletionCycle = Gba.Cpu.Cycles + WirelessPollCycles;
+		SioCompletionCycle = Gba.Cpu.Cycles + WirelessPollCycles;
 		_sioPollingWireless = true;
 	}
 
@@ -488,20 +519,20 @@ public class GbaIo
 					_sioRegs[2] = 0xFFFF;
 					_sioRegs[3] = 0xFFFF;
 					Rcnt &= unchecked((ushort)~0x0001);
-					_sioCompletionCycle = Gba.Cpu.Cycles + SioTransferCycles();
+					SioCompletionCycle = Gba.Cpu.Cycles + SioTransferCycles();
 				}
 				value |= 0x0008;
 				break;
 			case SioModeNormal8:
 			case SioModeNormal32:
 				value = (ushort)((value & 0x7F8B) | (oldSioCnt & 0x0004));
-				if ( (value & 0x0081) == 0x0081 && _sioCompletionCycle == long.MaxValue )
+				if ( (value & 0x0081) == 0x0081 && SioCompletionCycle == long.MaxValue )
 				{
 					uint sent = (uint)_sioRegs[0] | ((uint)_sioRegs[1] << 16);
 					uint reply = WirelessAdapter.Transfer( sent );
 					_sioRegs[0] = (ushort)(reply & 0xFFFF);
 					_sioRegs[1] = (ushort)(reply >> 16);
-					_sioCompletionCycle = Gba.Cpu.Cycles + SioTransferCycles();
+					SioCompletionCycle = Gba.Cpu.Cycles + SioTransferCycles();
 					_sioPollingWireless = false;
 				}
 
@@ -595,7 +626,7 @@ public class GbaIo
 	{
 		if ( SioDriver != null && !SioDriver.Start() )
 			return;
-		_sioCompletionCycle = Gba.Cpu.Cycles + SioTransferCycles( connected );
+		SioCompletionCycle = Gba.Cpu.Cycles + SioTransferCycles( connected );
 		_sioPollingWireless = false;
 	}
 
@@ -1065,6 +1096,7 @@ public class GbaIo
 			case 0x09C:
 			case 0x09E:
 				{
+					Gba.Audio.FlushSamples();
 					int writeBank;
 					if ( (Gba.Audio.SoundCntX & 0x80) == 0 )
 						writeBank = 1;
@@ -1226,12 +1258,12 @@ public class GbaIo
 
 	public void Serialize( BinaryWriter w )
 	{
-		w.Write( _irqFireCycle );
+		w.Write( IrqFireCycle );
 		w.Write( _fifoALatch );
 		w.Write( _fifoBLatch );
 		w.Write( _sioCnt );
 		w.Write( _sioMode );
-		w.Write( _sioCompletionCycle );
+		w.Write( SioCompletionCycle );
 		for ( int i = 0; i < _sioRegs.Length; i++ )
 			w.Write( _sioRegs[i] );
 		w.Write( Gba.KeysLast );
@@ -1239,12 +1271,12 @@ public class GbaIo
 
 	public void Deserialize( BinaryReader r )
 	{
-		_irqFireCycle = r.ReadInt64();
+		IrqFireCycle = r.ReadInt64();
 		_fifoALatch = r.ReadUInt16();
 		_fifoBLatch = r.ReadUInt16();
 		_sioCnt = r.ReadUInt16();
 		_sioMode = r.ReadInt32();
-		_sioCompletionCycle = r.ReadInt64();
+		SioCompletionCycle = r.ReadInt64();
 		for ( int i = 0; i < _sioRegs.Length; i++ )
 			_sioRegs[i] = r.ReadUInt16();
 		Gba.KeysLast = r.ReadUInt16();

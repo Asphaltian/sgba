@@ -485,7 +485,7 @@ public sealed partial class EmulatorComponent : Component
 
 	private void ReconcileCorePause()
 	{
-		bool networked = IsLinked || NetworkManager.Current?.InMultiplayerSession == true;
+		bool networked = NetworkManager.Current?.IsActive == true;
 		bool shouldHalt = _paused && !networked;
 		if ( shouldHalt == _coreHalted )
 			return;

@@ -68,9 +68,39 @@ public partial class GbaVideo
 	internal int _oamBatchOffset;
 	internal int _oamMax;
 
+	private readonly GbaTimingEvent _event;
+	private bool _nextIsHBlank;
+
 	public GbaVideo( Gba gba )
 	{
 		Gba = gba;
+		_event = new GbaTimingEvent( OnVideoEvent, 4, "video" );
+	}
+
+	private void OnVideoEvent( long late )
+	{
+		long when = Gba.Cpu.Cycles - late;
+
+		if ( _nextIsHBlank )
+		{
+			StartHBlank( late );
+			_nextIsHBlank = false;
+			Gba.Timing.Schedule( _event, when + GbaConstants.VideoHBlankLength );
+		}
+		else
+		{
+			StartHDraw( late );
+			_nextIsHBlank = true;
+			Gba.Timing.Schedule( _event, when + GbaConstants.VideoHDrawLength );
+		}
+	}
+
+	internal void ScheduleEventForLoad()
+	{
+		bool inHBlank = (DispStat & 0x0002) != 0;
+		_nextIsHBlank = !inHBlank;
+		long phaseLength = inHBlank ? GbaConstants.VideoHBlankLength : GbaConstants.VideoHDrawLength;
+		Gba.Timing.Schedule( _event, Gba.Cpu.Cycles + phaseLength );
 	}
 
 	private static ushort CleanWindowRange( ushort value, int limit )
@@ -123,6 +153,9 @@ public partial class GbaVideo
 		_oamDirty = true;
 		_oamBatchOffset = 0;
 		_oamMax = 0;
+
+		_nextIsHBlank = true;
+		Gba.Timing.Schedule( _event, Gba.Cpu.Cycles + GbaConstants.VideoHDrawLength );
 	}
 
 	public void WriteDispCnt( ushort value )
@@ -180,7 +213,7 @@ public partial class GbaVideo
 		}
 	}
 
-	public void StartHBlank()
+	public void StartHBlank( long cyclesLate )
 	{
 		if ( VCount < GbaConstants.VisibleLines )
 		{
@@ -202,13 +235,13 @@ public partial class GbaVideo
 		DispStat |= 0x0002;
 
 		if ( VCount < GbaConstants.VisibleLines )
-			Gba.Dma.OnHBlank();
+			Gba.Dma.OnHBlank( cyclesLate );
 
 		if ( VCount >= 2 && VCount < GbaConstants.VisibleLines + 2 )
-			Gba.Dma.OnDisplayStart();
+			Gba.Dma.OnDisplayStart( cyclesLate );
 
 		if ( (DispStat & 0x0010) != 0 )
-			Gba.Io.RaiseIrq( GbaIrq.HBlank, -6 );
+			Gba.Io.RaiseIrq( GbaIrq.HBlank, (int)cyclesLate - 6 );
 
 		if ( VCount < GbaConstants.VisibleLines )
 		{
@@ -229,7 +262,7 @@ public partial class GbaVideo
 		}
 	}
 
-	public void StartHDraw()
+	public void StartHDraw( long cyclesLate )
 	{
 		DispStat &= unchecked((ushort)~0x0002);
 		VCount++;
@@ -238,8 +271,8 @@ public partial class GbaVideo
 		{
 			DispStat |= 0x0001;
 			if ( (DispStat & 0x0008) != 0 )
-				Gba.Io.RaiseIrq( GbaIrq.VBlank );
-			Gba.Dma.OnVBlank();
+				Gba.Io.RaiseIrq( GbaIrq.VBlank, (int)cyclesLate );
+			Gba.Dma.OnVBlank( cyclesLate );
 			Gba.Io.WirelessAdapter.FrameUpdate();
 
 			SnapshotVram();
@@ -269,6 +302,8 @@ public partial class GbaVideo
 		else if ( VCount == GbaConstants.VideoVerticalTotalPixels )
 		{
 			VCount = 0;
+			Gba.FrameCounter++;
+			Gba.TotalCycles += GbaConstants.VideoTotalLength;
 		}
 
 		if ( VCount == GbaConstants.VideoVerticalTotalPixels - 1 )
@@ -281,7 +316,7 @@ public partial class GbaVideo
 		{
 			DispStat |= 0x0004;
 			if ( (DispStat & 0x0020) != 0 )
-				Gba.Io.RaiseIrq( GbaIrq.VCounter );
+				Gba.Io.RaiseIrq( GbaIrq.VCounter, (int)cyclesLate );
 		}
 		else
 		{

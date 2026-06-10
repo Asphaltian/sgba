@@ -88,7 +88,7 @@
 		"#pause.home"
 	];
 
-	private static bool InNetworkedSession => NetworkManager.Current?.InMultiplayerSession == true;
+	private static bool InNetworkedSession => NetworkManager.Current?.IsActive == true;
 	private string[] ActiveMenuItems => InNetworkedSession ? ClientMenuItems : MenuItems;
 
 	public bool IsVisible { get; private set; }

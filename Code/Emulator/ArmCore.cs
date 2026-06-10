@@ -114,80 +114,54 @@ public partial class ArmCore
 		if ( Halted )
 			return;
 
-		var dma = Gba.Dma;
-
-		while ( Cycles < targetCycles )
+		while ( Cycles < targetCycles && Cycles < Gba.Timing.NextEvent )
 		{
 			if ( Gba.Io.LockstepBlocked )
 				return;
 
-			long cyclesBefore = Cycles;
-			Gba.ProcessEvents( Cycles, Cycles );
-
-			if ( Gba.Io.LockstepBlocked || Halted || CrashDetected || (dma.ActiveDma >= 0 && dma.Channels[dma.ActiveDma].When <= Cycles) )
-				return;
-
 			if ( _prefetchFlushed )
 			{
-				long flushStart = Cycles;
 				FlushPipeline();
 				_prefetchFlushed = false;
-				Gba.ProcessEvents( flushStart, Cycles );
-
-				if ( Gba.Io.LockstepBlocked || Halted || CrashDetected || (dma.ActiveDma >= 0 && dma.Channels[dma.ActiveDma].When <= Cycles) )
-					return;
-
-				continue;
 			}
-
-			if ( IrqPending && !IrqDisable )
+			else if ( IrqPending && !IrqDisable )
 			{
-				long irqStart = Cycles;
 				RaiseIrq();
 				IrqPending = false;
 				FlushPipeline();
 				_prefetchFlushed = false;
-				Gba.ProcessEvents( irqStart, Cycles );
-
-				if ( Gba.Io.LockstepBlocked || Halted || CrashDetected || (dma.ActiveDma >= 0 && dma.Channels[dma.ActiveDma].When <= Cycles) )
-					return;
-
-				continue;
 			}
-
-			uint instrAddr = ThumbMode ? Gprs[15] - 4 : Gprs[15] - 8;
-
-			if ( !IsExecutableAddress( instrAddr ) )
-			{
-				if ( !CrashDetected )
-				{
-					CrashDetected = true;
-					CrashPc = instrAddr;
-					CrashCpsr = GetCpsrRaw();
-					CrashRegs = new uint[16];
-					Array.Copy( Gprs, CrashRegs, 16 );
-					CrashThumb = ThumbMode;
-				}
-				Cycles = targetCycles;
-				return;
-			}
-
-			InstructionStartCycles = Cycles;
-
-			if ( ThumbMode )
-				ExecuteThumb();
 			else
-				ExecuteArm();
+			{
+				uint instrAddr = ThumbMode ? Gprs[15] - 4 : Gprs[15] - 8;
 
-			if ( _prefetchFlushed )
-				PrechargePipelineCycles();
+				if ( !IsExecutableAddress( instrAddr ) )
+				{
+					if ( !CrashDetected )
+					{
+						CrashDetected = true;
+						CrashPc = instrAddr;
+						CrashCpsr = GetCpsrRaw();
+						CrashRegs = new uint[16];
+						Array.Copy( Gprs, CrashRegs, 16 );
+						CrashThumb = ThumbMode;
+					}
+					Cycles = targetCycles;
+					return;
+				}
 
-			Gba.ProcessEvents( cyclesBefore, Cycles );
+				InstructionStartCycles = Cycles;
 
-			if ( Gba.Io.LockstepBlocked || Halted || CrashDetected )
-				return;
+				if ( ThumbMode )
+					ExecuteThumb();
+				else
+					ExecuteArm();
 
-			if ( dma.ActiveDma >= 0 && dma.Channels[dma.ActiveDma].When <= Cycles )
+				if ( _prefetchFlushed )
+					PrechargePipelineCycles();
+			}
+
+			if ( Halted || CrashDetected )
 				return;
 		}
 	}

@@ -1,0 +1,120 @@
+@using Sandbox.UI
+
+@namespace sGBA
+
+@inherits Panel
+
+<root class="@RootClass" style="@PositionStyle" onclick=@(() => OnActivate?.Invoke())>
+	<SelectionRing Active=@Selected StrokeWidth=@RingStrokeWidth CornerRadius=@RingCornerRadius Gap=@RingGap Outset=@true class="all-card-ring" />
+	@if (Cover != null)
+	{
+		<TextureImage Texture=@Cover class="all-card-face has-cover" />
+	}
+	else
+	{
+		<div class="all-card-face is-missing">
+			<MissingCover />
+		</div>
+	}
+	@if (Selected)
+	{
+		<div class="@TitleClass" style="@TitleStyle">
+			<SvgPanel Src="@TitleArrowSrc" class="all-card-title-arrow" style="@TitleArrowStyle" />
+			<div class="all-card-title-clip" style="@TitleClipStyle">
+				@if (Marquee)
+				{
+					<MarqueeText Title=@Title class="all-card-title-marquee" />
+				}
+				else
+				{
+					<div class="all-card-title-text">@Title</div>
+				}
+			</div>
+		</div>
+	}
+</root>
+
+@code
+{
+	[Parameter] public GameEntry Game { get; set; }
+	[Parameter] public Texture Cover { get; set; }
+	[Parameter] public bool Selected { get; set; }
+	[Parameter] public string PositionStyle { get; set; }
+	[Parameter] public float CardLeft { get; set; }
+	[Parameter] public float CardWidth { get; set; }
+	[Parameter] public float GridWidth { get; set; }
+	[Parameter] public bool ShowTitleOnTop { get; set; }
+	[Parameter] public Action OnActivate { get; set; }
+
+	private const float TitleMaxWidth = 520f;
+	private const float TitlePadding = 34f;
+	private const float TitleArrowSize = 22f;
+	private const float TitleHeight = 64f;
+	private const float TitleVerticalOffset = 92f;
+	private const float TitleFitSlack = 18f;
+	private const float TitleSafezoneInset = 66f;
+	private const float ViewportWidth = 1920f;
+	private const float TitleFontSize = 30f;
+	private const int TitleFontWeight = 400;
+	private const string TitleFontName = "Poppins";
+	private static readonly Color TitleColor = new( 0.12f, 0.46f, 0.68f, 1f );
+	private const float RingStrokeWidth = 8f;
+	private const float RingCornerRadius = 14f;
+	private const float RingGap = 4f;
+
+	private string Title => Game?.DisplayTitle;
+	private string RootClass => "all-card" + (Selected ? " selected" : "");
+	private float Scale => MathF.Max( 0.001f, ScaleToScreen );
+	private float TitleClipMaxWidth => TitleMaxWidth - TitlePadding * 2f;
+	private bool Marquee => !string.IsNullOrWhiteSpace( Title ) && MeasureTitleWidth() > TitleClipMaxWidth;
+	private float BubbleWidth => Marquee ? TitleMaxWidth : MathF.Min( TitleMaxWidth, MeasureTitleWidth() + TitleFitSlack + TitlePadding * 2f );
+	private float ClipWidth => MathF.Max( 1f, BubbleWidth - TitlePadding * 2f );
+	private string TitleClass => "all-card-title" + (Marquee ? " marquee" : "") + (ShowTitleOnTop ? " top" : " bottom");
+	private string TitleArrowSrc => ShowTitleOnTop ? "/ui/title-pointer-down.svg" : "/ui/title-pointer.svg";
+	private string TitleClipStyle => $"width: {ClipWidth}px;";
+
+	private float MeasureTitleWidth()
+	{
+		if (string.IsNullOrWhiteSpace( Title ))
+			return 1f;
+
+		float scale = Scale;
+		var scope = new TextRendering.Scope( Title, TitleColor, TitleFontSize * scale, TitleFontName, TitleFontWeight );
+		return MathF.Ceiling( scope.Measure().x / scale );
+	}
+
+	private float BodyLeft
+	{
+		get
+		{
+			float width = BubbleWidth;
+			float desiredLeft = CardLeft + (CardWidth - width) * 0.5f;
+			float gridLeftInViewport = (ViewportWidth - GridWidth) * 0.5f;
+			float minLeft = TitleSafezoneInset - gridLeftInViewport;
+			float maxLeft = ViewportWidth - TitleSafezoneInset - gridLeftInViewport - width;
+			return desiredLeft.Clamp( minLeft, MathF.Max( minLeft, maxLeft ) ) - CardLeft;
+		}
+	}
+
+	private string TitleStyle
+	{
+		get
+		{
+			float width = BubbleWidth;
+			string vertical = ShowTitleOnTop ? $"top: -{TitleVerticalOffset}px; bottom: auto;" : $"bottom: -{TitleVerticalOffset}px; top: auto;";
+			return $"left: {BodyLeft}px; width: {width}px; {vertical}";
+		}
+	}
+
+	private string TitleArrowStyle
+	{
+		get
+		{
+			float arrowLeft = (CardWidth * 0.5f) - BodyLeft - (TitleArrowSize * 0.5f);
+			string vertical = ShowTitleOnTop ? $"top: {TitleHeight}px;" : "top: -12px;";
+			return $"left: {arrowLeft}px; margin-left: 0px; {vertical}";
+		}
+	}
+
+	protected override int BuildHash() => HashCode.Combine( Game?.Path, Cover, Selected, ShowTitleOnTop, CardLeft, CardWidth, GridWidth, (int)(Scale * 1000f) );
+}

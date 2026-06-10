@@ -61,8 +61,6 @@ public sealed partial class NetworkManager : Component, IWirelessNetwork, Compon
 	private int _localSlot = -1;
 
 	private EmulatorComponent _emulator;
-	private GbaWirelessAdapter Adapter => _emulator?.Core?.Io?.WirelessAdapter;
-	private GbaWirelessAdapter _wiredAdapter;
 	private readonly ConcurrentQueue<(int ClientId, byte[] Payload)> _outbox = new();
 
 	protected override void OnAwake()
@@ -78,12 +76,10 @@ public sealed partial class NetworkManager : Component, IWirelessNetwork, Compon
 
 	protected override void OnUpdate()
 	{
-		var adapter = Adapter;
-		if ( adapter is not null && !ReferenceEquals( adapter, _wiredAdapter ) )
-		{
-			adapter.Network = this;
-			_wiredAdapter = adapter;
-		}
+		if ( Networking.IsActive && Networking.IsHost && State == SessionState.Solo )
+			State = SessionState.Hosting;
+
+		WireAdapterIfNeeded();
 
 		while ( _outbox.TryDequeue( out var pkt ) )
 			DispatchSend( pkt.ClientId, pkt.Payload );
@@ -357,6 +353,9 @@ public sealed partial class NetworkManager : Component, IWirelessNetwork, Compon
 
 		if ( !Networking.IsHost )
 			return;
+
+		if ( conn is not null && _slotByConn.TryGetValue( conn.Id, out var senderIndex ) )
+			Adapter?.EnqueueDisconnect( senderIndex );
 
 		HostReleaseSlot( conn );
 		HostCommitRoster();
@@ -656,15 +655,6 @@ public sealed partial class NetworkManager : Component, IWirelessNetwork, Compon
 		}
 	}
 
-	private void TryWireAdapter()
-	{
-		var adapter = Adapter;
-		if ( adapter is null )
-			return;
-		adapter.Network = this;
-		_wiredAdapter = adapter;
-	}
-
 	void IWirelessNetwork.Send( int clientId, byte[] data, int length )
 	{
 		if ( data is null || length <= 0 )
@@ -752,6 +742,6 @@ public sealed partial class NetworkManager : Component, IWirelessNetwork, Compon
 		if ( Mode == SessionMode.LinkCable )
 			RouteLinkCablePacket( senderIndex, payload );
 		else
-			Adapter?.EnqueueReceive( senderIndex, payload, payload.Length );
+			RouteWirelessPacket( senderIndex, payload );
 	}
 }

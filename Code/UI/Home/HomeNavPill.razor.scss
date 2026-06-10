@@ -1,0 +1,28 @@
+.nav-pill
+{
+	position: absolute;
+	left: 32px;
+	bottom: 36px;
+	width: 374px;
+	height: 86px;
+	border-radius: 43px;
+	background-color: white;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	padding: 0;
+	overflow: visible;
+	box-shadow: 0 8px 24px rgba( 0, 0, 0, 0.36 );
+	z-index: 7;
+
+	.nav-button-row
+	{
+		position: relative;
+		width: 350px;
+		height: 86px;
+		flex-direction: row;
+		align-items: center;
+		justify-content: flex-start;
+		overflow: visible;
+	}
+}

@@ -1,0 +1,66 @@
+.home-backdrop
+{
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: 100%;
+	height: 100%;
+	z-index: 0;
+	overflow: visible;
+
+	.home-backdrop-fallback,
+	.home-backdrop-image,
+	.home-backdrop-soften,
+	.home-vignette
+	{
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 100%;
+		height: 100%;
+	}
+
+	.home-backdrop-fallback
+	{
+		background-color: #14171b;
+		z-index: 0;
+	}
+
+	.home-backdrop-image
+	{
+		background-size: cover;
+		background-position: center;
+		background-repeat: no-repeat;
+		filter: brightness( 0.48 ) saturate( 0.58 );
+		z-index: 1;
+		transition: opacity 0.18s ease;
+	}
+
+	.home-backdrop-image.previous
+	{
+		z-index: 1;
+	}
+
+	.home-backdrop-image.current
+	{
+		z-index: 2;
+		opacity: 1;
+	}
+
+	.home-backdrop-image.current:intro
+	{
+		opacity: 0;
+	}
+
+	.home-backdrop-soften
+	{
+		background-color: rgba( 14, 16, 18, 0.42 );
+		z-index: 3;
+	}
+
+	.home-vignette
+	{
+		background-image: linear-gradient( to bottom, rgba( 0, 0, 0, 0.06 ) 0%, rgba( 0, 0, 0, 0.05 ) 50%, rgba( 0, 40, 92, 0.86 ) 100% );
+		z-index: 4;
+	}
+}

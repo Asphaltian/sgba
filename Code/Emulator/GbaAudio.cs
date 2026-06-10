@@ -14,6 +14,8 @@ public partial class GbaAudio
 
 	private long _nextSampleCycle;
 	private long _nextFrameSeqCycle;
+	private readonly GbaTimingEvent _sampleEvent;
+	private readonly GbaTimingEvent _frameSeqEvent;
 
 	private const int TimingFactor = 4;
 	private const int FrameCycles = 0x2000;
@@ -143,15 +145,18 @@ public partial class GbaAudio
 		SoundBias = 0x0200;
 		_fifoA.Buffer = new uint[8];
 		_fifoB.Buffer = new uint[8];
+		_frameSeqEvent = new GbaTimingEvent( OnFrameSeqEvent, 5, "audio-frameseq" );
+		_sampleEvent = new GbaTimingEvent( OnSampleEvent, 6, "audio-sample" );
 	}
 
 	public void Reset()
 	{
 		SamplesWritten = 0;
 		_frameSeqStep = 0;
-		_totalCycles = 0;
-		_nextSampleCycle = CyclesPerSample;
-		_nextFrameSeqCycle = 0;
+		_totalCycles = Gba.Cpu.Cycles;
+		_nextSampleCycle = Gba.Cpu.Cycles + CyclesPerSample;
+		_nextFrameSeqCycle = Gba.Cpu.Cycles;
+		ScheduleAudioEvents();
 
 		Sound1CntL = Sound1CntH = Sound1CntX = 0;
 		Sound2CntL = Sound2CntH = 0;
@@ -276,50 +281,35 @@ public partial class GbaAudio
 			: 8 - fifo.Read + fifo.Write;
 	}
 
-	public void Tick( int cycles )
-	{
-		TickTo( Gba.Cpu.Cycles );
-	}
-
 	public void FlushSamples()
 	{
-		TickTo( Gba.Cpu.Cycles );
+		RunPsg( Gba.Cpu.Cycles );
 	}
 
-	private void TickTo( long target )
+	private void OnSampleEvent( long late )
 	{
-		if ( target <= _totalCycles )
-			return;
-
-		while ( true )
+		long when = Gba.Cpu.Cycles - late;
+		while ( _nextSampleCycle <= when )
 		{
-			long nextEvent = Math.Min( _nextSampleCycle, _nextFrameSeqCycle );
-
-			if ( nextEvent > target )
-				break;
-
-			_totalCycles = nextEvent;
-
-			if ( _nextSampleCycle == nextEvent )
-				RunSampleEvent();
-
-			if ( _nextFrameSeqCycle == nextEvent )
-				RunFrameSequencerEvent();
+			_totalCycles = _nextSampleCycle;
+			WriteSample();
+			_nextSampleCycle += CyclesPerSample;
 		}
-
-		_totalCycles = target;
+		Gba.Timing.Schedule( _sampleEvent, _nextSampleCycle + CyclesPerSample );
 	}
 
-	private void RunSampleEvent()
+	private void OnFrameSeqEvent( long late )
 	{
-		_nextSampleCycle += CyclesPerSample;
-		WriteSample();
-	}
-
-	private void RunFrameSequencerEvent()
-	{
-		_nextFrameSeqCycle += CyclesPerFrameSeq;
+		_totalCycles = Gba.Cpu.Cycles - late;
 		ClockFrameSequencer();
+		_nextFrameSeqCycle = _totalCycles + CyclesPerFrameSeq;
+		Gba.Timing.Schedule( _frameSeqEvent, _nextFrameSeqCycle );
+	}
+
+	internal void ScheduleAudioEvents()
+	{
+		Gba.Timing.Schedule( _sampleEvent, _nextSampleCycle + CyclesPerSample );
+		Gba.Timing.Schedule( _frameSeqEvent, _nextFrameSeqCycle );
 	}
 
 	private void WriteSample()

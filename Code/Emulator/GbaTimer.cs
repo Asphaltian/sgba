@@ -8,11 +8,14 @@ public class GbaTimerController
 
 	private static readonly int[] PrescaleBits = [0, 6, 8, 10];
 
+	private readonly GbaTimingEvent _event;
+
 	public GbaTimerController( Gba gba )
 	{
 		Gba = gba;
 		for ( int i = 0; i < 4; i++ )
 			Channels[i] = new GbaTimer( i );
+		_event = new GbaTimingEvent( late => Tick( Gba.Cpu.Cycles - late ), 1, "timer" );
 	}
 
 	public void Reset()
@@ -84,6 +87,11 @@ public class GbaTimerController
 				min = ch.NextOverflowCycle;
 		}
 		NextGlobalEvent = min;
+
+		if ( min == long.MaxValue )
+			Gba.Timing.Deschedule( _event );
+		else
+			Gba.Timing.Schedule( _event, min );
 	}
 
 	private void ScheduleOverflow( GbaTimer c )
@@ -141,19 +149,16 @@ public class GbaTimerController
 		return (ushort)(result & 0xFFFF);
 	}
 
-	public void Tick( int cycles )
+	public void Tick( long eventWhen )
 	{
-		long currentCycle = Gba.Cpu.Cycles;
-
-		if ( currentCycle < NextGlobalEvent )
-			return;
+		long now = Gba.Cpu.Cycles;
 
 		for ( int i = 0; i < 4; i++ )
 		{
 			var c = Channels[i];
 			if ( !c.Enabled || c.CountUp ) continue;
 
-			while ( currentCycle >= c.NextOverflowCycle )
+			while ( eventWhen >= c.NextOverflowCycle )
 			{
 				long overflowCycle = c.NextOverflowCycle;
 				c.Counter = c.Reload;
@@ -166,7 +171,7 @@ public class GbaTimerController
 
 				if ( c.DoIrq )
 				{
-					int late = (int)(currentCycle - overflowCycle);
+					int late = (int)(now - overflowCycle);
 					Gba.Io.RaiseIrq( (GbaIrq)(1 << (3 + i)), late );
 				}
 
@@ -180,7 +185,7 @@ public class GbaTimerController
 					var next = Channels[i + 1];
 					if ( next.Enabled && next.CountUp )
 					{
-						int cascadeLate = (int)(currentCycle - overflowCycle);
+						int cascadeLate = (int)(now - overflowCycle);
 						IncrementCascade( i + 1, cascadeLate );
 					}
 				}

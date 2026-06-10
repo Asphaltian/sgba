@@ -1,0 +1,99 @@
+@using Sandbox.UI
+
+@namespace sGBA
+
+@inherits Panel
+
+<root class="carousel-window">
+	<div class="carousel-strip">
+		@foreach (var item in Items)
+		{
+			var index = item.Index;
+			var offset = item.Offset;
+			var cover = item.Game != null ? CoverFor?.Invoke( item.Game ) : null;
+
+			<div @key="RenderKey(item.Key)" class="@ItemClass(index, offset, item.IsViewMore)" style="left: @(LeftFor(offset))px;">
+				<SelectionRing Active=@ShowRing(index) Circle=@item.IsViewMore StrokeWidth=@RingStrokeWidth CornerRadius=@RingCornerRadius Gap=@RingGap(item.IsViewMore) Outset=@true class="carousel-selection-ring" />
+				@if (item.IsViewMore)
+				{
+					<ViewMoreCard class="view-more-card" onclick=@(() => OnActivate?.Invoke( index )) />
+					<div class="view-more-label">#home.viewmore</div>
+				}
+				else if (cover != null)
+				{
+					<TextureImage Texture=@cover class="carousel-card-face has-cover" onclick=@(() => OnActivate?.Invoke( index )) />
+				}
+				else
+				{
+					<div class="carousel-card-face is-missing" onclick=@(() => OnActivate?.Invoke( index ))>
+						<MissingCover />
+					</div>
+				}
+			</div>
+		}
+	</div>
+</root>
+
+@code
+{
+	[Parameter] public IEnumerable<HomeCarouselEntry> Items { get; set; }
+	[Parameter] public int SelectedIndex { get; set; }
+	[Parameter] public bool NavFocused { get; set; }
+	[Parameter] public bool ShowSelection { get; set; }
+	[Parameter] public int RenderVersion { get; set; }
+	[Parameter] public int ArtworkVersion { get; set; }
+	[Parameter] public int MountedRange { get; set; }
+	[Parameter] public bool Suppress { get; set; }
+	[Parameter] public Func<GameEntry, Texture> CoverFor { get; set; }
+	[Parameter] public Action<int> OnActivate { get; set; }
+
+	private const float SelectedLeft = 210f;
+	private const float NormalCardWidth = 300f;
+	private const float FeaturedCardWidth = 420f;
+	private const float CardGap = 34f;
+	private const float RingStrokeWidth = 8f;
+	private const float RingCornerRadius = 17f;
+	private const float GameRingGap = 8f;
+	private const float ViewMoreRingGap = 0f;
+
+	private float LeftFor( int offset )
+	{
+		if (offset == 0)
+			return SelectedLeft;
+
+		if (offset < 0)
+			return SelectedLeft - ((NormalCardWidth + CardGap) * -offset);
+
+		float anchorVisualWidth = NavFocused ? NormalCardWidth : FeaturedCardWidth;
+		return SelectedLeft + anchorVisualWidth + CardGap + ((NormalCardWidth + CardGap) * (offset - 1));
+	}
+
+	private bool IsMounted( int offset ) => offset >= -MountedRange && offset <= MountedRange;
+
+	private string ItemClass( int index, int offset, bool isViewMore )
+	{
+		var cls = "carousel-item";
+		if (isViewMore) cls += " view-more";
+		if (index == SelectedIndex && !NavFocused) cls += " featured selected";
+		if (index < SelectedIndex) cls += " before";
+		if (index > SelectedIndex) cls += " after";
+		if (!IsMounted( offset )) cls += " offscreen";
+		return cls;
+	}
+
+	private string RenderKey( string key ) => $"{key}:{RenderVersion}";
+
+	private static float RingGap( bool isViewMore ) => isViewMore ? ViewMoreRingGap : GameRingGap;
+
+	private bool ShowRing( int index ) => ShowSelection && index == SelectedIndex && !NavFocused;
+
+	protected override void OnParametersSet()
+	{
+		base.OnParametersSet();
+
+		if (Suppress)
+			SkipTransitions();
+	}
+
+	protected override int BuildHash() => HashCode.Combine( Items, SelectedIndex, NavFocused, ShowSelection, RenderVersion, ArtworkVersion );
+}

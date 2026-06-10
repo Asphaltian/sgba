@@ -1,0 +1,30 @@
+@using Sandbox.UI
+
+@namespace sGBA
+
+@inherits Panel
+
+<root class="@PillClass">
+	<div class="nav-button-row">
+		@for (int i = 0; i < Items.Length; i++)
+		{
+			var index = i;
+			var item = Items[index];
+			<HomeNavButton Icon=@item.Icon ColorClass=@item.ColorClass Label=@item.Label Selected=@(ShowSelection && SelectedIndex == index) Hovered=@(() => OnHover?.Invoke(index)) Clicked=@(() => OnActivate?.Invoke(index)) />
+		}
+	</div>
+</root>
+
+@code
+{
+	[Parameter] public NavItem[] Items { get; set; }
+	[Parameter] public int SelectedIndex { get; set; }
+	[Parameter] public bool Focused { get; set; }
+	[Parameter] public bool ShowSelection { get; set; }
+	[Parameter] public Action<int> OnHover { get; set; }
+	[Parameter] public Action<int> OnActivate { get; set; }
+
+	private string PillClass => Focused ? "nav-pill focused" : "nav-pill";
+
+	protected override int BuildHash() => HashCode.Combine( SelectedIndex, Focused, ShowSelection, Items?.Length ?? 0 );
+}

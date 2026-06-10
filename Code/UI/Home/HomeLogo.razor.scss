@@ -1,0 +1,38 @@
+.selected-logo
+{
+	position: absolute;
+	top: 30px;
+	right: 48px;
+	width: 520px;
+	height: 112px;
+	align-items: center;
+	justify-content: flex-end;
+	z-index: 5;
+
+	.selected-logo-art
+	{
+		width: 400px;
+		height: 94px;
+		background-size: contain;
+		background-position: right center;
+		background-repeat: no-repeat;
+		filter: drop-shadow( 0 6px 10px rgba( 0, 0, 0, 0.75 ) );
+	}
+
+	.selected-logo-text
+	{
+		position: absolute;
+		top: 9px;
+		right: 0;
+		width: 520px;
+		height: 94px;
+		align-items: center;
+		justify-content: flex-end;
+		font-size: 24px;
+		font-weight: 600;
+		color: rgba( 255, 255, 255, 0.94 );
+		text-align: right;
+		white-space: nowrap;
+		text-shadow: 0 5px 16px rgba( 0, 0, 0, 0.82 );
+	}
+}

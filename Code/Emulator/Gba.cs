@@ -2,6 +2,7 @@ namespace sGBA;
 
 public class Gba
 {
+	public GbaTiming Timing { get; } = new();
 	public ArmCore Cpu { get; private set; }
 	public GbaMemory Memory { get; private set; }
 	public GbaVideo Video { get; private set; }
@@ -45,6 +46,7 @@ public class Gba
 
 	public void Reset()
 	{
+		Timing.Clear();
 		Memory.Reset();
 		Cpu.Reset();
 		Video.Reset();
@@ -67,8 +69,6 @@ public class Gba
 		TotalCycles = 0;
 		IsRunning = true;
 		_frameInProgress = false;
-		_frameLine = 0;
-		_framePhase = 0;
 	}
 
 	public void RunFrame()
@@ -78,29 +78,36 @@ public class Gba
 		Audio.BeginFrame();
 		Io.TestKeypadIrq();
 
-		long frameBase = Cpu.Cycles;
-
-		for ( int line = 0; line < GbaConstants.VideoVerticalTotalPixels; line++ )
+		long startCounter = FrameCounter;
+		while ( IsRunning && FrameCounter == startCounter )
 		{
-			long lineBase = frameBase + (long)line * GbaConstants.VideoHorizontalLength;
-			RunCpuTo( lineBase + GbaConstants.VideoHDrawLength );
-			Video.StartHBlank();
-			RunCpuTo( lineBase + GbaConstants.VideoHorizontalLength );
-			Video.StartHDraw();
+			long next = Timing.NextEvent;
+			if ( next == long.MaxValue )
+				break;
+
+			if ( next <= Cpu.Cycles )
+			{
+				DrainDueEvents();
+				continue;
+			}
+
+			RunCpuTo( next );
+			if ( Cpu.Cycles < next )
+				break;
 		}
+	}
 
-		long frameEnd = frameBase + GbaConstants.VideoTotalLength;
-		if ( Cpu.Cycles < frameEnd )
-			Cpu.Cycles = frameEnd;
-
-		FrameCounter++;
-		TotalCycles += GbaConstants.VideoTotalLength;
+	private void DrainDueEvents()
+	{
+		Io.BeginEventProcessing();
+		Timing.Tick( Cpu.Cycles );
+		Io.EndEventProcessing();
 	}
 
 	private bool _frameInProgress;
-	private long _frameBase;
-	private int _frameLine;
-	private int _framePhase;
+	private long _frameStartCounter;
+
+	private const int StepFrameEventBudget = 4096;
 
 	public bool FrameInProgress => _frameInProgress;
 
@@ -113,159 +120,33 @@ public class Gba
 		{
 			Audio.BeginFrame();
 			Io.TestKeypadIrq();
-			_frameBase = Cpu.Cycles;
-			_frameLine = 0;
-			_framePhase = 0;
+			_frameStartCounter = FrameCounter;
 			_frameInProgress = true;
 		}
 
-		while ( _frameLine < GbaConstants.VideoVerticalTotalPixels )
+		int budget = 0;
+		while ( FrameCounter == _frameStartCounter )
 		{
-			long lineBase = _frameBase + (long)_frameLine * GbaConstants.VideoHorizontalLength;
+			long next = Timing.NextEvent;
+			if ( next == long.MaxValue )
+				break;
 
-			if ( _framePhase == 0 )
+			if ( next <= Cpu.Cycles )
 			{
-				long target = lineBase + GbaConstants.VideoHDrawLength;
-				RunCpuTo( target );
-				if ( Cpu.Cycles < target )
-					return false;
-				Video.StartHBlank();
-				_framePhase = 1;
+				DrainDueEvents();
+				continue;
 			}
 
-			long lineEnd = lineBase + GbaConstants.VideoHorizontalLength;
-			RunCpuTo( lineEnd );
-			if ( Cpu.Cycles < lineEnd )
+			RunCpuTo( next );
+			if ( Io.LockstepBlocked || Cpu.Cycles < next )
 				return false;
-			Video.StartHDraw();
-			_framePhase = 0;
-			_frameLine++;
+
+			if ( ++budget >= StepFrameEventBudget )
+				return false;
 		}
 
-		long frameEnd = _frameBase + GbaConstants.VideoTotalLength;
-		if ( Cpu.Cycles < frameEnd )
-			Cpu.Cycles = frameEnd;
-
-		FrameCounter++;
-		TotalCycles += GbaConstants.VideoTotalLength;
 		_frameInProgress = false;
 		return true;
-	}
-
-	public void ProcessEvents( long startCycle, long endCycle )
-	{
-		if ( endCycle < startCycle )
-			return;
-
-		if ( startCycle == endCycle )
-		{
-			if ( HasDueEvents( startCycle ) )
-			{
-				Cpu.Cycles = startCycle;
-				ProcessPendingEvents();
-			}
-			return;
-		}
-
-		long targetCycle = endCycle;
-		Cpu.Cycles = startCycle;
-
-		if ( !HasDueEvents( startCycle ) )
-		{
-			long nextEvent = GetNextEvent( long.MaxValue );
-			if ( nextEvent > targetCycle )
-			{
-				Audio.Tick( (int)(targetCycle - startCycle) );
-				Cpu.Cycles = targetCycle;
-				return;
-			}
-		}
-
-		while ( Cpu.Cycles < targetCycle )
-		{
-			long nextEvent = GetNextEvent( targetCycle );
-
-			if ( nextEvent > Cpu.Cycles )
-			{
-				long currentCycle = Cpu.Cycles;
-				Cpu.Cycles = nextEvent;
-				Audio.Tick( (int)(nextEvent - currentCycle) );
-			}
-
-			if ( !ProcessPendingEvents() )
-				break;
-		}
-
-		if ( HasDueEvents( Cpu.Cycles ) )
-			ProcessPendingEvents();
-
-		Cpu.Cycles = targetCycle;
-	}
-
-	private bool HasDueEvents( long cycle )
-	{
-		return Io.NextIrqEvent <= cycle || Timers.NextGlobalEvent <= cycle || Io.NextSioEvent <= cycle || Io.NextDriverEvent <= cycle;
-	}
-
-	private long GetNextEvent( long defaultCycle )
-	{
-		long nextEvent = defaultCycle;
-		if ( Io.NextIrqEvent < nextEvent )
-			nextEvent = Io.NextIrqEvent;
-		if ( Io.NextSioEvent < nextEvent )
-			nextEvent = Io.NextSioEvent;
-		if ( Io.NextDriverEvent < nextEvent )
-			nextEvent = Io.NextDriverEvent;
-		if ( Timers.NextGlobalEvent < nextEvent )
-			nextEvent = Timers.NextGlobalEvent;
-		return nextEvent;
-	}
-
-	private bool ProcessPendingEvents()
-	{
-		bool processedAny = false;
-		Io.BeginEventProcessing();
-
-		try
-		{
-			while ( true )
-			{
-				bool processedEvent = false;
-
-				if ( Io.NextIrqEvent <= Cpu.Cycles )
-				{
-					Io.ProcessIrqEvent();
-					processedEvent = true;
-				}
-
-				if ( Timers.NextGlobalEvent <= Cpu.Cycles )
-				{
-					Timers.Tick( 0 );
-					processedEvent = true;
-				}
-
-				if ( Io.NextSioEvent <= Cpu.Cycles )
-				{
-					Io.FinishSioTransfer();
-					processedEvent = true;
-				}
-
-				if ( Io.NextDriverEvent <= Cpu.Cycles )
-				{
-					Io.ProcessDriverEvent();
-					processedEvent = true;
-				}
-
-				if ( !processedEvent )
-					return processedAny;
-
-				processedAny = true;
-			}
-		}
-		finally
-		{
-			Io.EndEventProcessing();
-		}
 	}
 
 	private void RunCpuTo( long target )
@@ -280,67 +161,22 @@ public class Gba
 					return;
 			}
 
-			if ( Dma.ActiveDma >= 0 )
+			if ( Timing.NextEvent <= Cpu.Cycles )
 			{
-				ProcessDma( target );
+				DrainDueEvents();
 				continue;
 			}
 
 			if ( Cpu.Halted )
 			{
-				ProcessHalt( target );
+				long next = Math.Min( Timing.NextEvent, target );
+				if ( next > Cpu.Cycles )
+					Cpu.Cycles = next;
 				continue;
 			}
 
 			Cpu.Run( target );
 		}
-	}
-
-	private void ProcessDma( long target )
-	{
-		while ( Dma.ActiveDma >= 0 && Cpu.Cycles < target )
-		{
-			var ch = Dma.Channels[Dma.ActiveDma];
-
-			if ( ch.When > Cpu.Cycles )
-			{
-				long runTo = Math.Min( ch.When, target );
-				if ( Cpu.Halted )
-					AdvanceClock( (int)(runTo - Cpu.Cycles) );
-				else
-					Cpu.Run( runTo );
-				continue;
-			}
-
-			int unitCost = Dma.ServiceUnit();
-			AdvanceClock( unitCost );
-		}
-	}
-
-	private void ProcessHalt( long target )
-	{
-		while ( Cpu.Cycles < target && Cpu.Halted )
-		{
-			if ( Io.LockstepBlocked )
-				return;
-
-			long nextEvent = GetNextEvent( target );
-			if ( Dma.ActiveDma >= 0 )
-				nextEvent = Math.Min( nextEvent, Dma.Channels[Dma.ActiveDma].When );
-
-			int chunk = Math.Max( 1, (int)(nextEvent - Cpu.Cycles) );
-			AdvanceClock( chunk );
-
-			if ( Dma.ActiveDma >= 0 && Dma.Channels[Dma.ActiveDma].When <= Cpu.Cycles )
-				ProcessDma( target );
-		}
-	}
-
-	private void AdvanceClock( int cycles )
-	{
-		long startCycle = Cpu.Cycles;
-		Cpu.Cycles += cycles;
-		ProcessEvents( startCycle, Cpu.Cycles );
 	}
 
 	public void SetKeyState( GbaKey key, bool pressed )

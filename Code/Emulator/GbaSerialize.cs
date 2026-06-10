@@ -305,6 +305,8 @@ public static class GbaSerialize
 		video.Win1H = r.ReadUInt16(); video.Win1V = r.ReadUInt16();
 		video.WinIn = r.ReadUInt16(); video.WinOut = r.ReadUInt16();
 		video.Mosaic = r.ReadUInt16();
+
+		video.ScheduleEventForLoad();
 	}
 
 	private static void WriteAudio( BinaryWriter w, GbaAudio audio )
@@ -337,6 +339,7 @@ public static class GbaSerialize
 		r.Read( audio.WaveRam );
 
 		audio.Deserialize( r );
+		audio.ScheduleAudioEvents();
 	}
 
 	private static void WriteIo( BinaryWriter w, GbaIo io )
@@ -403,6 +406,8 @@ public static class GbaSerialize
 			c.SourceOffset = r.ReadInt32(); c.DestOffset = r.ReadInt32();
 			c.DestInvalid = r.ReadBoolean();
 		}
+
+		dma.Update();
 	}
 
 	private static void WriteTimers( BinaryWriter w, GbaTimerController timers )
@@ -431,6 +436,8 @@ public static class GbaSerialize
 			c.PrescaleBits = r.ReadInt32();
 			c.LastEvent = r.ReadInt64(); c.NextOverflowCycle = r.ReadInt64();
 		}
+
+		timers.RecalcGlobalEvent();
 	}
 
 	private static void WriteSavedata( BinaryWriter w, GbaSavedata savedata )

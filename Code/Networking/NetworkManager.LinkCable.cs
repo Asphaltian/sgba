@@ -78,7 +78,7 @@ public sealed partial class NetworkManager
 		{
 			_linkActive = false;
 			_linkedMask = 0;
-			ResetHostToSolo();
+			ReturnHostToLobby();
 			emu.ContinueSoloFromLinkedHost();
 			return;
 		}
@@ -100,7 +100,7 @@ public sealed partial class NetworkManager
 		}
 	}
 
-	private void ResetHostToSolo()
+	private void ReturnHostToLobby()
 	{
 		var local = Connection.Local;
 		for ( int i = 0; i < _slotConns.Length; i++ )
@@ -109,7 +109,7 @@ public sealed partial class NetworkManager
 				_slotConns[i] = null;
 		}
 		HostCommitRoster();
-		State = SessionState.Solo;
+		State = SessionState.Hosting;
 	}
 
 	private int ActiveSlotMask()

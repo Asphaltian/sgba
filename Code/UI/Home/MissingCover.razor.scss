@@ -1,0 +1,20 @@
+.missing-icon-disc
+{
+	width: 162px;
+	height: 162px;
+	border-radius: 100%;
+	background-color: rgba( 238, 238, 238, 0.95 );
+	align-items: center;
+	justify-content: center;
+	transition: width 0.18s ease, height 0.18s ease;
+
+	.missing-icon
+	{
+		font-family: "Material Icons";
+		font-size: 92px;
+		font-weight: 600;
+		color: #5d5f66;
+		text-align: center;
+		transition: font-size 0.18s ease;
+	}
+}

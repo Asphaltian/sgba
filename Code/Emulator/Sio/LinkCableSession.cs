@@ -10,7 +10,7 @@ public sealed class LinkCableSession
 	private const int SyncWaitMilliseconds = 50;
 	private const int WakeWaitMilliseconds = 2;
 	private const int FrameCreditMax = 2;
-	private const int YieldIntervalMilliseconds = 250;
+	private const int YieldIntervalMilliseconds = 16;
 
 	public LinkCableHost Host { get; } = new();
 
@@ -190,8 +190,6 @@ public sealed class LinkCableSession
 				if ( core.Io.LockstepBlocked )
 				{
 					inst.WakeSignal.Wait( WakeWaitMilliseconds );
-					if ( core.Io.LockstepBlocked )
-						PumpBlockedCore( inst );
 					continue;
 				}
 
@@ -211,15 +209,20 @@ public sealed class LinkCableSession
 						continue;
 				}
 
+				bool completedFrame;
 				lock ( inst.CoreLock )
 				{
 					core.KeysActive = inst.Keys;
-					if ( core.StepFrame() )
+					completedFrame = core.StepFrame();
+					if ( completedFrame )
 					{
 						inst.LastHarvestedFrame = core.FrameCounter;
 						HarvestFrame( inst );
 					}
 				}
+
+				if ( !completedFrame )
+					await GameTask.Yield();
 			}
 		}
 		catch ( OperationCanceledException )
@@ -245,22 +248,6 @@ public sealed class LinkCableSession
 		catch ( Exception ex )
 		{
 			LogError( $"core task error: {ex.Message}\n{ex.StackTrace}" );
-		}
-	}
-
-	private static void PumpBlockedCore( LinkCableInstance inst )
-	{
-		var core = inst.Core;
-		lock ( inst.CoreLock )
-		{
-			if ( !core.Io.LockstepBlocked || core.FrameInProgress || !core.Io.IsDriverEventScheduled )
-				return;
-
-			long when = core.Io.NextDriverEvent;
-			if ( core.Cpu.Cycles < when )
-				core.Cpu.Cycles = when;
-
-			core.Io.ProcessDriverEvent();
 		}
 	}
 

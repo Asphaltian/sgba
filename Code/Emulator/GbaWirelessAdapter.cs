@@ -166,6 +166,7 @@ public sealed class GbaWirelessAdapter
 	private readonly PeerBroadcast[] _peers = new PeerBroadcast[MaxPeers];
 
 	private readonly ConcurrentQueue<(int FromClientId, byte[] Buffer, int Length)> _inbox = new();
+	private readonly ConcurrentQueue<int> _disconnects = new();
 	private readonly Random _rng = new( unchecked((int)DateTime.UtcNow.Ticks) );
 
 	public GbaWirelessAdapter( Gba gba )
@@ -194,10 +195,39 @@ public sealed class GbaWirelessAdapter
 		_inbox.Enqueue( (fromClientId, buffer, length) );
 	}
 
+	public void EnqueueDisconnect( int fromClientId )
+	{
+		_disconnects.Enqueue( fromClientId );
+	}
+
 	private void DrainInbox()
 	{
 		while ( _inbox.TryDequeue( out var pkt ) )
 			ReceiveNetworkPacket( pkt.Buffer, pkt.Length, pkt.FromClientId );
+	}
+
+	private void DrainDisconnects()
+	{
+		while ( _disconnects.TryDequeue( out int clientId ) )
+		{
+			if ( clientId >= 0 && clientId < MaxPeers )
+				_peers[clientId].Valid = false;
+
+			if ( WifiMode == WifiState.Host )
+			{
+				for ( int i = 0; i < MaxClients; i++ )
+				{
+					if ( _host.Clients[i].DeviceId != 0 && _host.Clients[i].ClientId == clientId )
+						ClearClientSlot( i );
+				}
+			}
+
+			if ( WifiMode == WifiState.Client && _client.HostId == clientId )
+			{
+				WifiMode = WifiState.Idle;
+				InitClient();
+			}
+		}
 	}
 
 	private void InitHost()
@@ -665,6 +695,7 @@ public sealed class GbaWirelessAdapter
 			return;
 
 		DrainInbox();
+		DrainDisconnects();
 
 		for ( int i = 0; i < MaxPeers; i++ )
 		{

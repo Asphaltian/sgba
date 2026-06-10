@@ -1,5 +1,3 @@
-@using Sandbox.UI
-@using sGBA
 @using System.Threading.Tasks
 
 @namespace sGBA
@@ -8,17 +6,7 @@
 
 <root class="@RootClass">
 	<div class="home-screen">
-		<div class="home-backdrop-fallback" />
-		@if (_previousBackdrop != null)
-		{
-			<TextureImage @key=@_previousBackdrop Texture=@_previousBackdrop class="home-backdrop-image previous" style=@($"opacity: {PreviousBackdropOpacity};") />
-		}
-		@if (_currentBackdrop != null)
-		{
-			<TextureImage @key=@_currentBackdrop Texture=@_currentBackdrop class="home-backdrop-image current" />
-		}
-		<div class="home-backdrop-soften" />
-		<div class="home-vignette" />
+		<HomeBackdrop Current=@_currentBackdrop Previous=@_previousBackdrop PreviousOpacity=@PreviousBackdropOpacity />
 
 		@if (ToastVisible)
 		{
@@ -31,46 +19,24 @@
 				<div class="all-software-rule top" />
 				<div class="all-software-rule bottom" />
 
-				<div class="all-software-scroll" @ref=_allSoftwareScrollPanel>
+				<div class="all-software-scroll" @ref=AllSoftwareScroll>
 					<div class="all-software-grid" style="@AllSoftwareGridStyle">
 					@foreach (var gridItem in AllSoftwareGridItems)
 					{
-						var game = gridItem.Game;
 						Texture gridCover = null;
-						if (game != null)
-							_boxArt.TryGetValue(game.Path, out gridCover);
+						if (gridItem.Game != null)
+							_boxArt.TryGetValue(gridItem.Game.Path, out gridCover);
 
-						<div @key="gridItem.Key" class="@AllSoftwareCardClass(gridItem.Index)" style="@AllSoftwareGridItemStyle(gridItem.Row, gridItem.Column)" onclick=@(() => ActivateAllSoftwareItemWithMouse(gridItem.Index))>
-							<SelectionRing Active=@IsAllSoftwareSelected(gridItem.Index) StrokeWidth=@AllSoftwareSelectionRingStrokeWidth CornerRadius=@AllSoftwareCardCornerRadius Gap=@AllSoftwareSelectionRingGap Outset=@true class="all-card-ring" />
-							@if (gridCover != null)
-							{
-								<TextureImage Texture=@gridCover class="all-card-face has-cover" />
-							}
-							else
-							{
-								<div class="all-card-face is-missing">
-									<div class="missing-icon-disc">
-										<div class="missing-icon">question_mark</div>
-									</div>
-								</div>
-							}
-							@if (IsAllSoftwareSelected(gridItem.Index))
-							{
-								<div class="@AllSoftwareTitleClass(game.DisplayTitle, gridItem.Index)" style="@AllSoftwareTitleStyle(game.DisplayTitle, gridItem.Column, gridItem.Index)">
-									<SvgPanel Src="@AllSoftwareTitleArrowSrc(gridItem.Index)" class="all-card-title-arrow" style="@AllSoftwareTitleArrowStyle(game.DisplayTitle, gridItem.Column, gridItem.Index)" />
-									<div class="all-card-title-clip" style="@AllSoftwareTitleClipStyle(game.DisplayTitle)">
-										@if (ShouldMarqueeAllSoftwareTitle(game.DisplayTitle))
-										{
-											<MarqueeText Title=@game.DisplayTitle class="all-card-title-marquee" />
-										}
-										else
-										{
-											<div class="all-card-title-text">@game.DisplayTitle</div>
-										}
-									</div>
-								</div>
-							}
-						</div>
+						<AllSoftwareCard @key="gridItem.Key"
+							Game=@gridItem.Game
+							Cover=@gridCover
+							Selected=@IsAllSoftwareSelected(gridItem.Index)
+							PositionStyle=@AllSoftwareGridItemStyle(gridItem.Row, gridItem.Column)
+							CardLeft=@(gridItem.Column * (AllSoftwareCardWidth + AllSoftwareColumnGap))
+							CardWidth=@AllSoftwareCardWidth
+							GridWidth=@AllSoftwareGridWidth
+							ShowTitleOnTop=@ShouldShowAllSoftwareTitleOnTop(gridItem.Index)
+							OnActivate=@(() => ActivateAllSoftwareItemWithMouse(gridItem.Index)) />
 					}
 
 					<div class="all-add-row" style="@AllSoftwareAddRowStyle">
@@ -85,8 +51,8 @@
 
 				@if (AllSoftwareShowsScrollbar)
 				{
-					<div class="all-scrollbar" @ref=_allSoftwareScrollbarPanel onmousedown=@OnAllSoftwareScrollbarMouseDown>
-						<div class="all-scrollbar-thumb" @ref=_allSoftwareScrollbarThumbPanel style="@AllSoftwareScrollbarThumbStyle" />
+					<div class="all-scrollbar" @ref=AllSoftwareScrollbar onmousedown=@OnAllSoftwareScrollbarMouseDown>
+						<div class="all-scrollbar-thumb" @ref=AllSoftwareScrollbarThumb style="@AllSoftwareScrollbarThumbStyle" />
 					</div>
 				}
 			</div>
@@ -97,63 +63,12 @@
 
 			@if (!IsHomeViewMoreSelected)
 			{
-				<div class="selected-logo">
-				@if (SelectedLogo != null)
-				{
-					<TextureImage Texture=@SelectedLogo class="selected-logo-art" />
-				}
-				else
-				{
-					<div class="selected-logo-text">@SelectedTitle</div>
-				}
-				</div>
+				<HomeLogo Logo=@SelectedLogo Title=@SelectedTitle />
 			}
 
-			<div class="carousel-window" @ref=_carouselWindowPanel>
-				<div class="carousel-strip">
-					@foreach (var carouselItem in CarouselItems)
-					{
-						var game = carouselItem.Game;
-						var itemIndex = carouselItem.Index;
-						var offset = carouselItem.Offset;
-						Texture cover = null;
-						if (game != null)
-							_boxArt.TryGetValue(game.Path, out cover);
+			<HomeCarousel Items=@CarouselItems SelectedIndex=@_selectedIndex NavFocused=@_navFocused ShowSelection=@ShowHomeSelection RenderVersion=@_homeCarouselRenderVersion ArtworkVersion=@_artworkVersion MountedRange=@CarouselMountedRange Suppress=@_suppressHomeCarouselTransitions CoverFor=@((GameEntry g) => _boxArt.GetValueOrDefault(g.Path)) OnActivate=@((int index) => ActivateCarouselItem(index)) />
 
-						<div @key="GetCarouselItemRenderKey(carouselItem.Key)" class="@CarouselItemClass(itemIndex, offset, carouselItem.IsViewMore)" style="left: @(GetCarouselLeft(offset, _navFocused))px;">
-							<SelectionRing Active=@ShouldShowCarouselRing(itemIndex) Circle=@carouselItem.IsViewMore StrokeWidth=@CarouselSelectionRingStrokeWidth CornerRadius=@CarouselSelectionRingCornerRadius Gap=@CarouselSelectionRingGap(carouselItem.IsViewMore) Outset=@true class="carousel-selection-ring" />
-							@if (carouselItem.IsViewMore)
-							{
-								<ViewMoreCard class="view-more-card" onclick=@(() => ActivateCarouselItem(itemIndex)) />
-								<div class="view-more-label">#home.viewmore</div>
-							}
-							else if (cover != null)
-							{
-								<TextureImage Texture=@cover class="carousel-card-face has-cover" onclick=@(() => ActivateCarouselItem(itemIndex)) />
-							}
-							else
-							{
-								<div class="carousel-card-face is-missing" onclick=@(() => ActivateCarouselItem(itemIndex))>
-									<div class="missing-icon-disc">
-										<div class="missing-icon">question_mark</div>
-									</div>
-								</div>
-							}
-							</div>
-						}
-					</div>
-				</div>
-
-			<div class="@(_navFocused ? "nav-pill focused" : "nav-pill")">
-				<div class="nav-button-row">
-					@for (int i = 0; i < NavItems.Length; i++)
-					{
-						var navIndex = i;
-						var navItem = NavItems[navIndex];
-						<HomeNavButton Icon=@navItem.Icon ColorClass=@navItem.ColorClass Label=@navItem.Label Selected=@ShouldShowNavSelection(navIndex) Hovered=@(() => SelectNavItem(navIndex, useGamepad: false)) Clicked=@(() => ActivateNavItem(navIndex, useGamepad: false)) />
-					}
-				</div>
-			</div>
+			<HomeNavPill Items=@NavItems SelectedIndex=@_navSelection Focused=@_navFocused ShowSelection=@(ShowHomeSelection && _input.UseGamepad && _navFocused) OnHover=@((int i) => SelectNavItem(i, useGamepad: false)) OnActivate=@((int i) => ActivateNavItem(i, useGamepad: false)) />
 		}
 
 	</div>
@@ -192,52 +107,8 @@
 	private bool _allSoftwareOpen;
 	private bool _addGamesModalOpen;
 	private readonly HomeToastState _toast = new();
-	private Panel _carouselWindowPanel;
-	private Panel _allSoftwareScrollPanel;
-	private Panel _allSoftwareScrollbarPanel;
-	private Panel _allSoftwareScrollbarThumbPanel;
-	private float _allSoftwareDesiredScrollY;
-	private float _lastAllSoftwareScrollY = -1f;
-	private int _allSoftwareTitleDirection = 1;
-	private bool _pendingAllSoftwareScrollApply;
-	private bool _allSoftwareSmoothScrollActive;
-	private bool _allSoftwareScrollbarDragging;
-	private float _allSoftwareScrollbarDragOffsetY;
 	private const int HomeGameLimit = 12;
-	private const int AllSoftwareColumns = 6;
-	private const float AllSoftwareCardWidth = 260f;
-	private const float AllSoftwareCardHeight = 260f;
-	private const float AllSoftwareCardCornerRadius = 14f;
-	private const float AllSoftwareColumnGap = 20f;
-	private const float AllSoftwareRowGap = 20f;
-	private const float AllSoftwareGridVerticalPadding = 54f;
-	private const float AllSoftwareAddButtonHeight = 86f;
-	private const float AllSoftwareAddButtonTopGap = 96f;
-	private const float AllSoftwareAddButtonBottomGap = 72f;
-	private const float AllSoftwareScrollViewportHeight = 906f;
-	private const float AllSoftwareSelectionTopMargin = 16f;
-	private const float AllSoftwareSelectionBottomMargin = 58f;
-	private const float AllSoftwareSelectionRingStrokeWidth = 8f;
-	private const float AllSoftwareSelectionRingGap = 4f;
-	private const float AllSoftwareSmoothScrollRate = 18f;
-	private const float AllSoftwareScrollbarHeight = 906f;
-	private const float AllSoftwareTitleHeight = 64f;
-	private const float AllSoftwareTitleVerticalOffset = 92f;
-	private const float AllSoftwareTitleMaxWidth = 520f;
-	private const float AllSoftwareTitlePadding = 34f;
-	private const float AllSoftwareTitleArrowSize = 22f;
-	private const float AllSoftwareViewportWidth = 1920f;
-	private const float AllSoftwareTitleSafezoneInset = 66f;
-	private const float AllSoftwareTitleFontSize = 30f;
-	private const int AllSoftwareTitleFontWeight = 400;
-	private const float AllSoftwareTitleFitSlack = 18f;
-	private const string AllSoftwareTitleFontName = "Poppins";
-	private static readonly Color AllSoftwareTitleColor = new( 0.12f, 0.46f, 0.68f, 1f );
 	private const int CarouselMountedRange = 9;
-	private const float CarouselSelectionRingStrokeWidth = AllSoftwareSelectionRingStrokeWidth;
-	private const float CarouselSelectionRingCornerRadius = 17f;
-	private const float CarouselGameSelectionRingGap = 8f;
-	private const float CarouselViewMoreSelectionRingGap = 0f;
 	private const float BackdropRetainDuration = 0.32f;
 	private Texture _currentBackdrop;
 	private Texture _previousBackdrop;
@@ -245,19 +116,11 @@
 	private bool _previousBackdropFading;
 	private int _backdropVersion;
 	private readonly List<PendingTextureDispose> _pendingTextureDisposals = new();
-	private const float CarouselSelectedLeft = 210f;
-	private const float CarouselNormalCardWidth = 300f;
-	private const float CarouselFeaturedCardWidth = 420f;
-	private const float CarouselCardGap = 34f;
 	private const float HomeCarouselSettleDuration = 0.2f;
 
-	private readonly record struct HomeCarouselEntry(GameEntry Game, int Index, int Offset, bool IsViewMore, string Key);
-	private readonly record struct AllSoftwareEntry(GameEntry Game, int Index, int Row, int Column, string Key);
 	private sealed record ArtworkRequest(GameEntry Game, ThumbType Kind, Dictionary<string, Texture> Target);
 	private sealed record ArtworkLoad(ArtworkRequest Request, Texture Texture);
 	private readonly record struct PendingTextureDispose(string Key, Texture Texture, float Age);
-
-	private readonly record struct NavItem(string Icon, string ColorClass, string Label);
 
 	private readonly NavItem[] NavItems =
 	[
@@ -289,26 +152,6 @@
 	private bool ToastBlocked => AddGamesModalOpen || SettingsModalOpen || DetailsModal.Current?.IsVisible == true;
 	private bool ToastVisible => _toast.IsVisible(ToastBlocked);
 	private string ToastStyle => _toast.GetStyle(ToastVisible);
-	private bool ShowAllSoftwareSelection => ShowHomeSelection;
-	private bool IsAllSoftwareAddSelected => ShowAllSoftwareSelection && _allSoftwareOpen && _input.UseGamepad && _allSoftwareSelection == AllSoftwareAddIndex;
-	private int AllSoftwareAddIndex => _allGames.Count;
-	private int AllSoftwareEntryCount => _allGames.Count;
-	private int AllSoftwareGameRows => _allGames.Count == 0 ? 0 : (int)MathF.Ceiling(_allGames.Count / (float)AllSoftwareColumns);
-	private int AllSoftwareAddRow => AllSoftwareGameRows;
-	private float AllSoftwareRowStride => AllSoftwareCardHeight + AllSoftwareRowGap;
-	private float AllSoftwareGridWidth => AllSoftwareColumns * AllSoftwareCardWidth + Math.Max(0, AllSoftwareColumns - 1) * AllSoftwareColumnGap;
-	private float AllSoftwareGameContentHeight => AllSoftwareGameRows == 0 ? 0f : AllSoftwareGameRows * AllSoftwareCardHeight + Math.Max(0, AllSoftwareGameRows - 1) * AllSoftwareRowGap;
-	private float AllSoftwareAddButtonTop => AllSoftwareGridVerticalPadding + AllSoftwareGameContentHeight + AllSoftwareAddButtonTopGap;
-	private float AllSoftwareContentHeight => AllSoftwareAddButtonTop + AllSoftwareAddButtonHeight + AllSoftwareAddButtonBottomGap;
-	private float AllSoftwareMaxScrollY => MathF.Max(0f, AllSoftwareContentHeight - AllSoftwareScrollViewportHeight);
-	private float AllSoftwareScrollScale => MathF.Max(0.001f, _allSoftwareScrollPanel?.ScaleToScreen ?? Panel?.ScaleToScreen ?? 1f);
-	private float AllSoftwareScrollY => _allSoftwareScrollPanel == null
-		? _allSoftwareDesiredScrollY.Clamp(0f, AllSoftwareMaxScrollY)
-		: (_allSoftwareScrollPanel.ScrollOffset.y / AllSoftwareScrollScale).Clamp(0f, AllSoftwareMaxScrollY);
-	private bool AllSoftwareShowsScrollbar => AllSoftwareContentHeight > AllSoftwareScrollViewportHeight;
-	private float AllSoftwareScrollbarThumbHeight => !AllSoftwareShowsScrollbar ? AllSoftwareScrollbarHeight : MathF.Max(72f, AllSoftwareScrollbarHeight * (AllSoftwareScrollViewportHeight / AllSoftwareContentHeight));
-	private float AllSoftwareScrollbarThumbTravel => MathF.Max(0f, AllSoftwareScrollbarHeight - AllSoftwareScrollbarThumbHeight);
-	private float AllSoftwareScrollbarThumbTop => AllSoftwareScrollbarThumbTravel <= 0f ? 0f : AllSoftwareScrollbarThumbTravel * (AllSoftwareScrollY / MathF.Max(1f, AllSoftwareMaxScrollY));
 	private GameEntry SelectedGame => _allSoftwareOpen
 		? _allSoftwareSelection >= 0 && _allSoftwareSelection < _allGames.Count ? _allGames[_allSoftwareSelection] : null
 		: !IsHomeViewMoreSelected && _selectedIndex >= 0 && _selectedIndex < _homeItems.Count ? _homeItems[_selectedIndex] : null;
@@ -316,27 +159,6 @@
 	private Texture SelectedLogo => SelectedGame != null && _logos.TryGetValue(SelectedGame.Path, out var logo) ? logo : null;
 	private Texture SelectedBackdrop => SelectedGame != null && _snaps.TryGetValue(SelectedGame.Path, out var snap) ? snap : SelectedGame != null && _boxArt.TryGetValue(SelectedGame.Path, out var cover) ? cover : null;
 	private float PreviousBackdropOpacity => _previousBackdrop == null ? 0f : _previousBackdropFading ? 0f : 1f;
-	private string AllSoftwareScrollbarThumbStyle
-	{
-		get
-		{
-			if (!AllSoftwareShowsScrollbar)
-				return "";
-
-			return $"top: {AllSoftwareScrollbarThumbTop}px; height: {AllSoftwareScrollbarThumbHeight}px;";
-		}
-	}
-
-	private string AllSoftwareGridStyle => $"width: {AllSoftwareGridWidth}px; height: {AllSoftwareContentHeight}px;";
-
-	private string AllSoftwareGridItemStyle(int row, int column)
-	{
-		float left = column * (AllSoftwareCardWidth + AllSoftwareColumnGap);
-		float top = AllSoftwareGridVerticalPadding + row * AllSoftwareRowStride;
-		return $"left: {left}px; top: {top}px;";
-	}
-
-	private string AllSoftwareAddRowStyle => $"left: 0px; top: {AllSoftwareAddButtonTop}px; width: {AllSoftwareGridWidth}px;";
 
 	private IEnumerable<HomeCarouselEntry> CarouselItems
 	{
@@ -352,36 +174,6 @@
 			{
 				bool isViewMore = i == HomeViewMoreIndex;
 				yield return new HomeCarouselEntry(isViewMore ? null : _homeItems[i], i, i - selected, isViewMore, isViewMore ? "view-more" : _homeItems[i].Path);
-			}
-		}
-	}
-
-	private IEnumerable<AllSoftwareEntry> AllSoftwareGridItems
-	{
-		get
-		{
-			for (int index = 0; index < AllSoftwareEntryCount; index++)
-			{
-				int row = index / AllSoftwareColumns;
-				int column = index % AllSoftwareColumns;
-				yield return new AllSoftwareEntry(_allGames[index], index, row, column, _allGames[index].Path);
-			}
-		}
-	}
-
-	private IEnumerable<AllSoftwareEntry> AllSoftwareVisibleItems
-	{
-		get
-		{
-			int firstRow = Math.Max(0, (int)MathF.Floor((AllSoftwareScrollY - AllSoftwareGridVerticalPadding) / AllSoftwareRowStride) - 1);
-			int visibleRows = Math.Max(1, (int)MathF.Ceiling(AllSoftwareScrollViewportHeight / AllSoftwareRowStride) + 2);
-			int first = firstRow * AllSoftwareColumns;
-			int last = Math.Min(AllSoftwareEntryCount, first + AllSoftwareColumns * visibleRows);
-			for (int index = first; index < last; index++)
-			{
-				int row = index / AllSoftwareColumns;
-				int column = index % AllSoftwareColumns;
-				yield return new AllSoftwareEntry(_allGames[index], index, row, column, _allGames[index].Path);
 			}
 		}
 	}
@@ -643,7 +435,6 @@
 			_suppressHomeCarouselTransitions = true;
 			_homeCarouselTransitionSuppressionFrames = 2;
 			Panel?.SkipTransitions();
-			_carouselWindowPanel?.SkipTransitions();
 			SyncBackdropTexture();
 			QueueArtworkRefresh();
 		}
@@ -724,83 +515,6 @@
 		return AddComponent<AddGamesModal>();
 	}
 
-	private void OpenAllSoftware()
-	{
-		var selectedGame = SelectedGame;
-		_allSoftwareOpen = true;
-		_navFocused = false;
-		int allSoftwareIndex = selectedGame == null ? -1 : _allGames.IndexOf(selectedGame);
-		_allSoftwareSelection = allSoftwareIndex >= 0 ? allSoftwareIndex : _allGames.Count == 0 ? AllSoftwareAddIndex : 0;
-		EnsureAllSoftwareSelectionVisible();
-		Sound.Play("ui.button.press");
-		QueueArtworkRefresh();
-		StateHasChanged();
-	}
-
-	private void CloseAllSoftware()
-	{
-		_allSoftwareOpen = false;
-		_selectedIndex = HomeGameCount > 0 ? 0 : HomeViewMoreIndex;
-		_navFocused = false;
-		_homeCarouselSettleRemaining = 0f;
-		_queuedHomeLaunchGame = null;
-
-		SyncBackdropTexture();
-		QueueArtworkRefresh();
-		Sound.Play("ui.popup.message.close");
-		StateHasChanged();
-	}
-
-	private void ActivateAllSoftwareItem(int index)
-	{
-		SelectAllSoftwareItem(index, _input.UseGamepad);
-		if (index == AllSoftwareAddIndex)
-		{
-			ActivateAllSoftwareAdd();
-			return;
-		}
-
-		var game = index >= 0 && index < _allGames.Count ? _allGames[index] : null;
-		if (game != null)
-			LaunchGame(game);
-	}
-
-	private void ActivateAllSoftwareItemWithMouse(int index)
-	{
-		SetAllSoftwareTitleDirectionForMouse(index);
-
-		if (_allSoftwareSelection != index)
-		{
-			SelectAllSoftwareItem(index, useGamepad: false);
-			return;
-		}
-
-		_input.ForceMouseMode();
-		var game = index >= 0 && index < _allGames.Count ? _allGames[index] : null;
-		if (game != null)
-			LaunchGame(game);
-	}
-
-	private void SetAllSoftwareTitleDirectionForMouse(int index)
-	{
-		if (index < 0 || index >= _allGames.Count)
-			return;
-
-		int row = index / AllSoftwareColumns;
-		float itemCenterY = AllSoftwareGridVerticalPadding + row * AllSoftwareRowStride + AllSoftwareCardHeight * 0.5f - AllSoftwareScrollY;
-		_allSoftwareTitleDirection = itemCenterY >= AllSoftwareScrollViewportHeight * 0.5f ? 1 : -1;
-	}
-
-	private void ActivateAllSoftwareAdd()
-	{
-		if (_input.UseGamepad)
-			SelectAllSoftwareItem(AllSoftwareAddIndex, useGamepad: true);
-		else
-			UseMouseInAllSoftware();
-
-		OpenAddGamesModal(_input.UseGamepad);
-	}
-
 	private void LaunchGame(GameEntry game)
 	{
 		var emulator = EmulatorComponent.Current;
@@ -825,7 +539,6 @@
 		_suppressHomeCarouselTransitions = true;
 		_homeCarouselTransitionSuppressionFrames = 4;
 		Panel?.SkipTransitions();
-		_carouselWindowPanel?.SkipTransitions();
 		_homeCarouselRenderVersion++;
 		_pendingFrozenHomeLaunchPath = game.Path;
 		_pendingFrozenHomeLaunchFrames = 1;
@@ -1169,378 +882,9 @@
 		StateHasChanged();
 	}
 
-	private void SelectAllSoftwareItem(int index, bool useGamepad)
-	{
-		var next = index.Clamp(0, AllSoftwareAddIndex);
-		if (_allSoftwareSelection == next)
-		{
-			if (!useGamepad)
-				UseMouseInAllSoftware();
-			return;
-		}
-
-		_allSoftwareSelection = next;
-		if (useGamepad)
-			SetGamepadMode();
-		else
-			_input.ForceMouseMode();
-
-		EnsureAllSoftwareSelectionVisible(smooth: true);
-		Sound.Play("ui.button.over");
-		QueueArtworkRefresh();
-		StateHasChanged();
-	}
-
-	private void NavigateAllSoftwareHorizontal(int direction)
-	{
-		if (_allSoftwareSelection < 0)
-		{
-			SelectFirstVisibleAllSoftwareItem(useGamepad: true);
-			return;
-		}
-
-		int next = _allSoftwareSelection + direction;
-		if (next < 0 || next > AllSoftwareAddIndex)
-			return;
-
-		if (_allSoftwareSelection == AllSoftwareAddIndex)
-		{
-			if (direction < 0 && _allGames.Count > 0)
-				SelectAllSoftwareItem(_allGames.Count - 1, useGamepad: true);
-			return;
-		}
-
-		if (next == AllSoftwareAddIndex)
-		{
-			SelectAllSoftwareItem(AllSoftwareAddIndex, useGamepad: true);
-			return;
-		}
-
-		int currentRow = _allSoftwareSelection / AllSoftwareColumns;
-		int nextRow = next / AllSoftwareColumns;
-		if (currentRow != nextRow)
-			return;
-
-		SelectAllSoftwareItem(next, useGamepad: true);
-	}
-
-	private void NavigateAllSoftwareVertical(int direction)
-	{
-		_allSoftwareTitleDirection = Math.Sign(direction);
-
-		if (_allSoftwareSelection < 0)
-		{
-			SelectFirstVisibleAllSoftwareItem(useGamepad: true);
-			return;
-		}
-
-		if (direction > 0 && _allSoftwareSelection >= Math.Max(0, _allGames.Count - AllSoftwareColumns))
-		{
-			SelectAllSoftwareItem(AllSoftwareAddIndex, useGamepad: true);
-			return;
-		}
-
-		if (direction < 0 && _allSoftwareSelection == AllSoftwareAddIndex)
-		{
-			int rowStart = Math.Max(0, (AllSoftwareGameRows - 1) * AllSoftwareColumns);
-			int column = AllSoftwareColumns / 2;
-			SelectAllSoftwareItem(Math.Min(Math.Max(0, _allGames.Count - 1), rowStart + column), useGamepad: true);
-			return;
-		}
-
-		int next = _allSoftwareSelection + direction * AllSoftwareColumns;
-		if (next < 0 || next >= _allGames.Count)
-			return;
-
-		SelectAllSoftwareItem(next, useGamepad: true);
-	}
-
-	private void EnsureAllSoftwareSelectionVisible(bool smooth = false)
-	{
-		if (_allSoftwareSelection < 0)
-		{
-			return;
-		}
-
-		bool isAddSelected = IsAllSoftwareAddSelected;
-		int row = isAddSelected ? AllSoftwareAddRow : _allSoftwareSelection / AllSoftwareColumns;
-		float itemBaseTop = isAddSelected ? AllSoftwareAddButtonTop : AllSoftwareGridVerticalPadding + row * AllSoftwareRowStride;
-		float itemHeight = isAddSelected ? AllSoftwareAddButtonHeight : AllSoftwareCardHeight;
-		float itemTop = !isAddSelected && row == 0 ? 0f : MathF.Max(0f, itemBaseTop - AllSoftwareSelectionTopMargin);
-		float itemBottom = itemBaseTop + itemHeight + AllSoftwareSelectionBottomMargin;
-		float viewTop = AllSoftwareScrollY;
-		float viewBottom = viewTop + AllSoftwareScrollViewportHeight;
-		float nextScroll = viewTop;
-
-		if (isAddSelected)
-			nextScroll = AllSoftwareMaxScrollY;
-		else if (itemTop < viewTop)
-			nextScroll = itemTop;
-		else if (itemBottom > viewBottom)
-			nextScroll = itemBottom - AllSoftwareScrollViewportHeight;
-
-		SetAllSoftwareScrollY(nextScroll, smooth);
-	}
-
-	private void SetAllSoftwareScrollY(float scrollY, bool smooth = false)
-	{
-		_allSoftwareDesiredScrollY = scrollY.Clamp(0f, AllSoftwareMaxScrollY);
-		_allSoftwareSmoothScrollActive = smooth;
-		_pendingAllSoftwareScrollApply = !smooth;
-
-		if (_allSoftwareScrollPanel == null)
-			return;
-
-		if (smooth)
-			return;
-
-		_allSoftwareScrollPanel.ScrollOffset = new Vector2(0f, _allSoftwareDesiredScrollY * AllSoftwareScrollScale);
-		_allSoftwareScrollPanel.ScrollVelocity = Vector2.Zero;
-		_lastAllSoftwareScrollY = _allSoftwareDesiredScrollY;
-		_pendingAllSoftwareScrollApply = false;
-	}
-
-	private void UpdateAllSoftwareScrollState()
-	{
-		if (!_allSoftwareOpen || _allSoftwareScrollPanel == null)
-			return;
-
-		UpdateAllSoftwareScrollbarDrag();
-
-		if (_allSoftwareSmoothScrollActive)
-		{
-			float current = AllSoftwareScrollY;
-			float next = current.LerpTo(_allSoftwareDesiredScrollY, Time.Delta * AllSoftwareSmoothScrollRate);
-			if (MathF.Abs(next - _allSoftwareDesiredScrollY) < 0.5f)
-			{
-				next = _allSoftwareDesiredScrollY;
-				_allSoftwareSmoothScrollActive = false;
-			}
-
-			_allSoftwareScrollPanel.ScrollOffset = new Vector2(0f, next * AllSoftwareScrollScale);
-			_allSoftwareScrollPanel.ScrollVelocity = Vector2.Zero;
-			_lastAllSoftwareScrollY = next;
-			QueueArtworkRefresh();
-			StateHasChanged();
-			return;
-		}
-
-		if (_pendingAllSoftwareScrollApply)
-		{
-			SetAllSoftwareScrollY(_allSoftwareDesiredScrollY);
-			QueueArtworkRefresh();
-			StateHasChanged();
-			return;
-		}
-
-		float scrollY = AllSoftwareScrollY;
-		if (MathF.Abs(scrollY - _lastAllSoftwareScrollY) < 0.5f)
-			return;
-
-		_allSoftwareTitleDirection = Math.Sign(scrollY - _lastAllSoftwareScrollY);
-		_allSoftwareDesiredScrollY = scrollY;
-		_lastAllSoftwareScrollY = scrollY;
-		ClearAllSoftwareSelectionForMouseScroll();
-		QueueArtworkRefresh();
-		StateHasChanged();
-	}
-
-	private void OnAllSoftwareScrollbarMouseDown()
-	{
-		if (!AllSoftwareShowsScrollbar || _allSoftwareScrollbarPanel == null)
-			return;
-
-		UseMouseInAllSoftware();
-		_allSoftwareSmoothScrollActive = false;
-		_allSoftwareScrollbarDragging = true;
-
-		float thumbTop = _allSoftwareScrollbarThumbPanel?.Box.Top ?? 0f;
-		float thumbBottom = _allSoftwareScrollbarThumbPanel?.Box.Bottom ?? 0f;
-		float thumbHeight = MathF.Max(1f, thumbBottom - thumbTop);
-		bool pressedThumb = Mouse.Position.y >= thumbTop && Mouse.Position.y <= thumbBottom;
-		_allSoftwareScrollbarDragOffsetY = pressedThumb ? Mouse.Position.y - thumbTop : thumbHeight * 0.5f;
-
-		UpdateAllSoftwareScrollbarDrag();
-	}
-
-	protected override void OnMouseMove(MousePanelEvent e)
-	{
-		base.OnMouseMove(e);
-
-		if (!_allSoftwareScrollbarDragging)
-			return;
-
-		UpdateAllSoftwareScrollbarDrag();
-		e.StopPropagation();
-	}
-
-	protected override void OnMouseUp(MousePanelEvent e)
-	{
-		base.OnMouseUp(e);
-
-		if (!_allSoftwareScrollbarDragging)
-			return;
-
-		_allSoftwareScrollbarDragging = false;
-		e.StopPropagation();
-	}
-
-	private void UpdateAllSoftwareScrollbarDrag()
-	{
-		if (!_allSoftwareScrollbarDragging || _allSoftwareScrollbarPanel == null || _allSoftwareScrollPanel == null || !AllSoftwareShowsScrollbar)
-			return;
-
-		float trackHeight = MathF.Max(1f, _allSoftwareScrollbarPanel.Box.Rect.Height);
-		float thumbHeight = MathF.Max(1f, AllSoftwareScrollbarThumbHeight * AllSoftwareScrollScale);
-		float travel = MathF.Max(1f, trackHeight - thumbHeight);
-		float thumbTop = (Mouse.Position.y - _allSoftwareScrollbarPanel.Box.Rect.Top - _allSoftwareScrollbarDragOffsetY).Clamp(0f, travel);
-		float scrollY = (thumbTop / travel) * AllSoftwareMaxScrollY;
-
-		SetAllSoftwareScrollY(scrollY);
-		QueueArtworkRefresh();
-		StateHasChanged();
-	}
-
 	private bool IsHomeViewMoreIndex(int index)
 	{
 		return index == HomeViewMoreIndex;
-	}
-
-	private bool IsAllSoftwareSelected(int index)
-	{
-		return ShowAllSoftwareSelection && _allSoftwareOpen && _allSoftwareSelection == index;
-	}
-
-	private string AllSoftwareCardClass(int index)
-	{
-		return "all-card" + (IsAllSoftwareSelected(index) ? " selected" : "");
-	}
-
-	private bool ShouldMarqueeAllSoftwareTitle(string title)
-	{
-		if (string.IsNullOrWhiteSpace(title))
-			return false;
-
-		return MeasureAllSoftwareTitleWidth(title) > AllSoftwareTitleClipMaxWidth;
-	}
-
-	private bool ShouldShowAllSoftwareTitleOnTop(int index)
-	{
-		if (index < 0 || index >= _allGames.Count || AllSoftwareGameRows <= 1)
-			return false;
-
-		int row = index / AllSoftwareColumns;
-		if (row == 0)
-			return false;
-
-		if (row == AllSoftwareGameRows - 1)
-			return true;
-
-		return _allSoftwareTitleDirection > 0;
-	}
-
-	private string AllSoftwareTitleClass(string title, int index)
-	{
-		return "all-card-title" + (ShouldMarqueeAllSoftwareTitle(title) ? " marquee" : "") + (ShouldShowAllSoftwareTitleOnTop(index) ? " top" : " bottom");
-	}
-
-	private string AllSoftwareTitleArrowSrc(int index)
-	{
-		return ShouldShowAllSoftwareTitleOnTop(index) ? "/ui/title-pointer-down.svg" : "/ui/title-pointer.svg";
-	}
-
-	private static float AllSoftwareTitleClipMaxWidth => AllSoftwareTitleMaxWidth - AllSoftwareTitlePadding * 2f;
-
-	private float AllSoftwareTitleBubbleWidth(string title)
-	{
-		if (ShouldMarqueeAllSoftwareTitle(title))
-			return AllSoftwareTitleMaxWidth;
-
-		return MathF.Min(AllSoftwareTitleMaxWidth, MeasureAllSoftwareTitleWidth(title) + AllSoftwareTitleFitSlack + AllSoftwareTitlePadding * 2f);
-	}
-
-	private float AllSoftwareTitleClipWidth(string title)
-	{
-		return MathF.Max(1f, AllSoftwareTitleBubbleWidth(title) - AllSoftwareTitlePadding * 2f);
-	}
-
-	private float AllSoftwareTitleBodyLeft(string title, int column)
-	{
-		float width = AllSoftwareTitleBubbleWidth(title);
-		float cardLeft = column * (AllSoftwareCardWidth + AllSoftwareColumnGap);
-		float desiredLeft = cardLeft + (AllSoftwareCardWidth - width) * 0.5f;
-		float gridLeftInViewport = (AllSoftwareViewportWidth - AllSoftwareGridWidth) * 0.5f;
-		float minLeft = AllSoftwareTitleSafezoneInset - gridLeftInViewport;
-		float maxLeft = AllSoftwareViewportWidth - AllSoftwareTitleSafezoneInset - gridLeftInViewport - width;
-		return desiredLeft.Clamp(minLeft, MathF.Max(minLeft, maxLeft)) - cardLeft;
-	}
-
-	private string AllSoftwareTitleStyle(string title, int column, int index)
-	{
-		float width = AllSoftwareTitleBubbleWidth(title);
-		float left = AllSoftwareTitleBodyLeft(title, column);
-		string vertical = ShouldShowAllSoftwareTitleOnTop(index)
-			? $"top: -{AllSoftwareTitleVerticalOffset}px; bottom: auto;"
-			: $"bottom: -{AllSoftwareTitleVerticalOffset}px; top: auto;";
-		return $"left: {left}px; width: {width}px; {vertical}";
-	}
-
-	private string AllSoftwareTitleArrowStyle(string title, int column, int index)
-	{
-		float bubbleLeft = AllSoftwareTitleBodyLeft(title, column);
-		float arrowLeft = (AllSoftwareCardWidth * 0.5f) - bubbleLeft - (AllSoftwareTitleArrowSize * 0.5f);
-		string vertical = ShouldShowAllSoftwareTitleOnTop(index)
-			? $"top: {AllSoftwareTitleHeight}px;"
-			: "top: -12px;";
-		return $"left: {arrowLeft}px; margin-left: 0px; {vertical}";
-	}
-
-	private string AllSoftwareTitleClipStyle(string title)
-	{
-		return $"width: {AllSoftwareTitleClipWidth(title)}px;";
-	}
-
-	private float MeasureAllSoftwareTitleWidth(string title)
-	{
-		if (string.IsNullOrWhiteSpace(title))
-			return 1f;
-
-		float scale = GetAllSoftwareTitleScale();
-		var scope = new TextRendering.Scope(title, AllSoftwareTitleColor, AllSoftwareTitleFontSize * scale, AllSoftwareTitleFontName, AllSoftwareTitleFontWeight);
-		return MathF.Ceiling(scope.Measure().x / scale);
-	}
-
-	private float GetAllSoftwareTitleScale()
-	{
-		return MathF.Max(0.001f, Panel?.ScaleToScreen ?? 1f);
-	}
-
-	private string AllSoftwareAddButtonClass => "all-add-button" + (IsAllSoftwareAddSelected ? " selected" : "");
-
-	private void UseMouseInAllSoftware()
-	{
-		_input.ForceMouseMode();
-		_allSoftwareSelection = -1;
-		StateHasChanged();
-	}
-
-	private void ClearAllSoftwareSelectionForMouseScroll()
-	{
-		_input.ForceMouseMode();
-		_allSoftwareSelection = -1;
-	}
-
-	private void SelectFirstVisibleAllSoftwareItem(bool useGamepad)
-	{
-		if (_allGames.Count == 0)
-		{
-			SelectAllSoftwareItem(AllSoftwareAddIndex, useGamepad);
-			return;
-		}
-
-		int firstVisibleRow = Math.Max(0, (int)MathF.Floor((AllSoftwareScrollY - AllSoftwareGridVerticalPadding) / AllSoftwareRowStride));
-		int firstVisible = (firstVisibleRow * AllSoftwareColumns).Clamp(0, _allGames.Count - 1);
-		SelectAllSoftwareItem(firstVisible, useGamepad);
 	}
 
 	private void UpdateBackdropTransition()
@@ -1668,54 +1012,9 @@
 		return AddComponent<DetailsModal>();
 	}
 
-	private static float GetCarouselLeft(int offset, bool navFocused)
-	{
-		float anchorLeft = CarouselSelectedLeft;
-		float anchorVisualWidth = navFocused ? CarouselNormalCardWidth : CarouselFeaturedCardWidth;
-
-		if (offset == 0)
-			return anchorLeft;
-
-		if (offset < 0)
-			return CarouselSelectedLeft - ((CarouselNormalCardWidth + CarouselCardGap) * -offset);
-
-		return CarouselSelectedLeft + anchorVisualWidth + CarouselCardGap + ((CarouselNormalCardWidth + CarouselCardGap) * (offset - 1));
-	}
-
 	private static bool IsCarouselOffsetMounted(int offset)
 	{
 		return offset >= -CarouselMountedRange && offset <= CarouselMountedRange;
-	}
-
-	private string CarouselItemClass(int index, int offset, bool isViewMore)
-	{
-		var cls = "carousel-item";
-		if (isViewMore) cls += " view-more";
-		if (index == _selectedIndex && !_navFocused) cls += " featured selected";
-		if (index < _selectedIndex) cls += " before";
-		if (index > _selectedIndex) cls += " after";
-		if (!IsCarouselOffsetMounted(offset)) cls += " offscreen";
-		return cls;
-	}
-
-	private string GetCarouselItemRenderKey(string key)
-	{
-		return $"{key}:{_homeCarouselRenderVersion}";
-	}
-
-	private static float CarouselSelectionRingGap(bool isViewMore)
-	{
-		return isViewMore ? CarouselViewMoreSelectionRingGap : CarouselGameSelectionRingGap;
-	}
-
-	private bool ShouldShowCarouselRing(int index)
-	{
-		return ShowHomeSelection && index == _selectedIndex && !_navFocused;
-	}
-
-	private bool ShouldShowNavSelection(int index)
-	{
-		return ShowHomeSelection && _input.UseGamepad && _navFocused && _navSelection == index;
 	}
 
 	protected override int BuildHash()
@@ -1725,7 +1024,7 @@
 				HashCode.Combine(_selectedIndex, _allSoftwareSelection, (int)AllSoftwareScrollY, _allSoftwareOpen),
 				HashCode.Combine(AddGamesModalOpen, SettingsModalOpen, _allGames.Count, _homeItems.Count, _suppressHomeCarouselTransitions),
 				HashCode.Combine(_homeCarouselRenderVersion, _input.UseGamepad, _artworkVersion, _backdropVersion),
-				(int)(GetAllSoftwareTitleScale() * 1000f),
+				_allSoftwareTitleDirection,
 				HashCode.Combine(_navFocused, _navSelection, _toast.RenderHash));
 
 		return HashCode.Combine(_isVisible);

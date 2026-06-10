@@ -1,0 +1,28 @@
+@using Sandbox.UI
+
+@namespace sGBA
+
+@inherits Panel
+
+<root class="home-backdrop">
+	<div class="home-backdrop-fallback" />
+	@if (Previous != null)
+	{
+		<TextureImage @key=@Previous Texture=@Previous class="home-backdrop-image previous" style=@($"opacity: {PreviousOpacity};") />
+	}
+	@if (Current != null)
+	{
+		<TextureImage @key=@Current Texture=@Current class="home-backdrop-image current" />
+	}
+	<div class="home-backdrop-soften" />
+	<div class="home-vignette" />
+</root>
+
+@code
+{
+	[Parameter] public Texture Current { get; set; }
+	[Parameter] public Texture Previous { get; set; }
+	[Parameter] public float PreviousOpacity { get; set; }
+
+	protected override int BuildHash() => HashCode.Combine( Current, Previous, PreviousOpacity );
+}
