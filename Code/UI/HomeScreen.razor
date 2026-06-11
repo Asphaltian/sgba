@@ -524,6 +524,7 @@
 			return;
 
 		GamePlayHistory.MarkPlayed(game.Path);
+		AchievementManager.OnGameLaunched(game.Path);
 		_homeOrderDirty = true;
 		_suppressHomeCarouselTransitions = true;
 		_pendingHomeSelectionPath = game.Path;

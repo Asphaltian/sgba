@@ -46,6 +46,7 @@ public sealed partial class EmulatorComponent : Component
 	private int _initDeferFrames;
 	private string _stateBasePath;
 	private bool _appliedReproduceClassicFeel;
+	private RealTimeSince _sessionTime;
 
 	protected override void OnStart()
 	{
@@ -172,6 +173,8 @@ public sealed partial class EmulatorComponent : Component
 			ResetVideoClock();
 			_coreThread.Start();
 
+			_sessionTime = 0;
+			AchievementManager.OnSessionStarted();
 			IsReady = true;
 		}
 		catch ( Exception ex )
@@ -212,6 +215,9 @@ public sealed partial class EmulatorComponent : Component
 	protected override void OnUpdate()
 	{
 		ReconcileLinkedMode();
+
+		if ( _coreThread != null )
+			AchievementManager.OnSessionTime( _sessionTime );
 
 		if ( _linkedClient )
 		{
