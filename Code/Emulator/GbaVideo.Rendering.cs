@@ -94,7 +94,7 @@ public partial class GbaVideo
 	private int _frameReady;
 	private bool _hasFrame;
 
-	private const int MaxOamBatches = 8;
+	private const int MaxOamBatches = GbaConstants.VisibleLines;
 	private const int MaxOamEntries = 128 * MaxOamBatches;
 
 	private uint[][] _frameOldCharBase;
