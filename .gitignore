@@ -28,11 +28,20 @@ code/Properties/*
 # ROMs and system files
 Assets/roms/*
 Assets/system/*
-!Assets/roms/suite.gba
 !Assets/roms/bloxorz.gba
 !Assets/roms/Solar_Guard_GBA_JAM_2021.gba
-!Assets/roms/Skyland.gba
+!Assets/roms/suite.gba
 !Assets/roms/Apotris.gba
+!Assets/roms/Skyland.gba
+!Assets/roms/BlindJump.gba
+!Assets/roms/butano-fighter.gba
+!Assets/roms/feline.gba
+!Assets/roms/gd_adv.gba
+!Assets/roms/microjam23.gba
+!Assets/roms/minicraft.gba
+!Assets/roms/Space Evangelion_jam.gba
+!Assets/roms/sym_merged.gba
+!Assets/roms/varooom-3d.gba
 
 # Exported / standalone games
 Exports/
