@@ -295,7 +295,7 @@ public partial class GbaAudio
 			WriteSample();
 			_nextSampleCycle += CyclesPerSample;
 		}
-		Gba.Timing.Schedule( _sampleEvent, _nextSampleCycle + CyclesPerSample );
+		Gba.Timing.Schedule( _sampleEvent, _nextSampleCycle );
 	}
 
 	private void OnFrameSeqEvent( long late )
@@ -308,7 +308,7 @@ public partial class GbaAudio
 
 	internal void ScheduleAudioEvents()
 	{
-		Gba.Timing.Schedule( _sampleEvent, _nextSampleCycle + CyclesPerSample );
+		Gba.Timing.Schedule( _sampleEvent, _nextSampleCycle );
 		Gba.Timing.Schedule( _frameSeqEvent, _nextFrameSeqCycle );
 	}
 
