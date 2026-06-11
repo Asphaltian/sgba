@@ -221,7 +221,7 @@ public sealed class LinkCableSession
 					}
 				}
 
-				if ( !completedFrame )
+				if ( !completedFrame && !core.Io.LockstepBlocked )
 					await GameTask.Yield();
 			}
 		}

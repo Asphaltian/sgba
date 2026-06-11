@@ -905,7 +905,7 @@ public partial class GbaVideo
 			int expected = GbaConstants.ScreenWidth * GbaConstants.ScreenHeight * 4;
 			var result = new byte[expected];
 			int n = Math.Min( span.Length, expected );
-			span.Slice( 0, n ).CopyTo( result );
+			span[..n].CopyTo( result );
 			callback?.Invoke( result );
 		}, ImageFormat.RGBA8888, (0, 0, GbaConstants.ScreenWidth, GbaConstants.ScreenHeight) );
 	}

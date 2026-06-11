@@ -181,6 +181,8 @@
 	protected override void OnTreeFirstBuilt()
 	{
 		Current = this;
+		if (NetworkManager.Current != null)
+			NetworkManager.Current.JoinRejected += OnJoinRejected;
 		EnsureInputHintsPanel();
 		_games = GameEntry.Discover();
 		_knownPaths = GameEntry.GetInstalledPaths();
@@ -623,7 +625,9 @@
 	private void SyncVisibilityWithEmulator()
 	{
 		var emu = EmulatorComponent.Current;
-		bool running = emu.IsValid() && emu.IsReady && !string.IsNullOrEmpty(emu.RomPath);
+		var net = NetworkManager.Current;
+		bool linkClient = net != null && net.IsClient && net.Mode == SessionMode.LinkCable;
+		bool running = emu.IsValid() && (emu.IsLinked || linkClient || (emu.IsReady && !string.IsNullOrEmpty(emu.RomPath)));
 		if (running && _isVisible) Hide();
 		else if (!running && !_isVisible) Show();
 	}
@@ -1030,8 +1034,16 @@
 		return HashCode.Combine(_isVisible);
 	}
 
+	private void OnJoinRejected()
+	{
+		Show();
+		ShowToast("#toast.missingrom.title", "#toast.missingrom.message", "warning", "orange");
+	}
+
 	protected override void OnDestroy()
 	{
+		if (NetworkManager.Current != null)
+			NetworkManager.Current.JoinRejected -= OnJoinRejected;
 		if (Current == this)
 			Current = null;
 		DisposeArtworkTextures();

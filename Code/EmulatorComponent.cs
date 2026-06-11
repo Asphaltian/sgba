@@ -211,6 +211,8 @@ public sealed partial class EmulatorComponent : Component
 
 	protected override void OnUpdate()
 	{
+		ReconcileLinkedMode();
+
 		if ( _linkedClient )
 		{
 			if ( _timeSinceClientPacket > ClientHostTimeoutSeconds )
@@ -253,6 +255,14 @@ public sealed partial class EmulatorComponent : Component
 	{
 		if ( _initCoreOnUpdate )
 		{
+			var net = NetworkManager.Current;
+			if ( net != null && net.Mode == SessionMode.LinkCable && !Networking.IsHost && net.State != SessionState.Solo )
+			{
+				_initCoreOnUpdate = false;
+				_initDeferFrames = 0;
+				return false;
+			}
+
 			if ( ShouldDeferInitialCore() )
 				return false;
 

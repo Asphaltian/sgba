@@ -103,9 +103,23 @@ public sealed partial class EmulatorComponent
 		var net = NetworkManager.Current;
 		if ( net != null )
 		{
-			net.AttachLinkSession( _linkSession );
-			net.ExternalAvDriver = true;
+			net.Link.AttachSession( _linkSession );
+			net.Link.ExternalAvDriver = true;
 		}
+	}
+
+	private void ReconcileLinkedMode()
+	{
+		if ( _linkedHost || _linkedClient )
+			return;
+
+		var net = NetworkManager.Current;
+		if ( net == null || net.Mode != SessionMode.LinkCable )
+			return;
+		if ( net.State != SessionState.InGame )
+			return;
+
+		net.Link.BeginLinkedPlay();
 	}
 
 	public void BeginLinkedClient()
@@ -121,6 +135,7 @@ public sealed partial class EmulatorComponent
 			.WithName( "sgba_client_screen" )
 			.Finish();
 		ScreenTexture = _clientScreenTex;
+		HomeScreen.Current?.Hide();
 		_clientLastVideoFrame = -1;
 		_clientInputFrame = 0;
 		_clientSaveUploaded = false;
@@ -138,8 +153,8 @@ public sealed partial class EmulatorComponent
 		var net = NetworkManager.Current;
 		if ( net != null )
 		{
-			net.OnRemoteAv = OnRemoteAvPacket;
-			net.OnRemoteState = OnRemoteStatePacket;
+			net.Link.OnRemoteAv = OnRemoteAvPacket;
+			net.Link.OnRemoteState = OnRemoteStatePacket;
 		}
 	}
 
@@ -245,10 +260,10 @@ public sealed partial class EmulatorComponent
 		var net = NetworkManager.Current;
 		if ( net != null )
 		{
-			net.DetachLinkSession();
-			net.ExternalAvDriver = false;
-			net.OnRemoteAv = null;
-			net.OnRemoteState = null;
+			net.Link.DetachSession();
+			net.Link.ExternalAvDriver = false;
+			net.Link.OnRemoteAv = null;
+			net.Link.OnRemoteState = null;
 		}
 
 		if ( _linkedHost )
@@ -427,12 +442,12 @@ public sealed partial class EmulatorComponent
 		{
 			byte[] save = ReadHostSave();
 			if ( save != null )
-				net.SendLocalSave( save );
+				net.Link.SendLocalSave( save );
 			_clientSaveUploaded = true;
 		}
 
 		ushort keys = ReadInputKeysActive();
-		net.SendLocalInput( _clientInputFrame++, keys );
+		net.Link.SendLocalInput( _clientInputFrame++, keys );
 	}
 
 	private void TickLinkedHost()
@@ -506,7 +521,7 @@ public sealed partial class EmulatorComponent
 			while ( session.TryDequeueAv( inst, out var packet ) )
 			{
 				packet.Video = null;
-				net.HostSendAv( slot, packet );
+				net.Link.HostSendAv( slot, packet );
 			}
 
 			if ( inst.TimeSinceStateSent > StateStreamIntervalSeconds )
@@ -515,7 +530,7 @@ public sealed partial class EmulatorComponent
 				byte[] state;
 				lock ( inst.CoreLock )
 					state = GbaSerialize.Save( inst.Core, null );
-				net.HostSendState( slot, state );
+				net.Link.HostSendState( slot, state );
 			}
 
 			if ( inst.PendingVideoFrame >= 0 )
@@ -526,7 +541,7 @@ public sealed partial class EmulatorComponent
 				int playerId = inst.PlayerId;
 				inst.Core.Video.CaptureScreenshotAsync( video =>
 				{
-					net.HostSendAv( capturedSlot, new LinkCableAvPacket { PlayerId = playerId, Frame = frame, Video = video } );
+					net.Link.HostSendAv( capturedSlot, new LinkCableAvPacket { PlayerId = playerId, Frame = frame, Video = video } );
 				} );
 			}
 
