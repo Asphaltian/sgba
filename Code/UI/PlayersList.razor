@@ -1,0 +1,51 @@
+@namespace sGBA
+
+@inherits PanelComponent
+
+@if (IsShown)
+{
+	<root class="@(IsExpanded ? "expanded" : "")">
+		@for (int i = 0; i < SlotCount; i++)
+		{
+			var slot = i;
+			var player = PlayerAt(slot);
+			<div class="player @(player != null ? "filled" : "empty") @(player?.IsLocal == true ? "local" : "")">
+				<div class="avatar" style="@AvatarStyle(player)"></div>
+				<div class="info">
+					<div class="tag">P@(slot + 1)</div>
+					@if (player != null)
+					{
+						<div class="name">@player.DisplayName</div>
+					}
+				</div>
+			</div>
+		}
+	</root>
+}
+
+@code
+{
+	private static NetworkManager Net => NetworkManager.Current;
+
+	private bool IsShown => Net?.IsActive == true && HomeScreen.Current?.IsVisible != true;
+	private bool IsExpanded => PauseMenu.Current?.IsVisible == true;
+	private int SlotCount => Net?.PlayerCap ?? 0;
+
+	private static SessionPlayer PlayerAt(int slot) =>
+		Net?.Players.FirstOrDefault(p => p.Slot == slot);
+
+	private static string AvatarStyle(SessionPlayer player) =>
+		player != null ? $"background-image: url( avatar:{player.SteamId} )" : "background-image: none";
+
+	protected override int BuildHash()
+	{
+		var net = Net;
+		if (net == null)
+			return 0;
+
+		int hash = HashCode.Combine(IsShown, IsExpanded, SlotCount);
+		foreach (var player in net.Players)
+			hash = HashCode.Combine(hash, player.Slot, player.SteamId, player.DisplayName);
+		return hash;
+	}
+}

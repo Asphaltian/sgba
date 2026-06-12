@@ -69,6 +69,13 @@ CS
 		float2 vTexCoord = PixelCoordToUv( id.xy, OutputSize.xy );
 		float4 sourceColor = Source.SampleLevel( PointClamp, vTexCoord, 0 );
 		sourceColor.a = 1.0;
+
+		if ( colorMode == 0 )
+		{
+			OutputTex[id.xy] = sourceColor;
+			return;
+		}
+
 		float4 screen = pow( sourceColor, float4( exponent, exponent, exponent, exponent ) );
 		screen = clamp( screen, 0.0, 1.0 );
 		float4 output = pow( ApplyColorProfile( screen, colorMode ), ( 1.0 / display_gamma ).xxxx );

@@ -8,7 +8,7 @@ public sealed partial class EmulatorComponent
 	private readonly List<LinkCableInstance> _linkInstances = new();
 	private bool _linkedHost;
 	private bool _linkedClient;
-	private Texture _clientScreenTex;
+	private GbaVideo _clientVideo;
 	private long _clientLastVideoFrame = -1;
 	private long _clientInputFrame;
 	private bool _clientSaveUploaded;
@@ -53,24 +53,7 @@ public sealed partial class EmulatorComponent
 		_audioStream?.Dispose();
 		_audioStream = null;
 
-		Gba core0;
-		if ( soloCore != null )
-		{
-			core0 = soloCore;
-		}
-		else
-		{
-			core0 = new();
-			core0.LoadRom( romData );
-			if ( hostSave != null )
-				core0.Savedata.Load( hostSave );
-			core0.Reset();
-			core0.Video.InitGpu( scale: ComputeAutoScale() );
-			core0.Video.SetReproduceClassicFeel( GamePreferences.ReproduceClassicFeel );
-
-			if ( _camera.IsValid() && core0.Video.RenderCommandList != null )
-				_camera.AddCommandList( core0.Video.RenderCommandList, Stage.AfterOpaque, 0 );
-		}
+		Gba core0 = soloCore ?? CreateLinkedCore( romData, hostSave, ComputeAutoScale(), localDisplay: true );
 
 		var inst0 = _linkSession.Attach( core0, 0 );
 		_linkInstances.Add( inst0 );
@@ -129,12 +112,12 @@ public sealed partial class EmulatorComponent
 
 		TearDownCore();
 
-		_clientScreenTex = Texture.Create( GbaConstants.ScreenWidth, GbaConstants.ScreenHeight )
-			.WithFormat( ImageFormat.RGBA8888 )
-			.WithDynamicUsage()
-			.WithName( "sgba_client_screen" )
-			.Finish();
-		ScreenTexture = _clientScreenTex;
+		_clientVideo = GbaVideo.CreatePresenter( ComputeAutoScale() );
+		_clientVideo.SetReproduceClassicFeel( GamePreferences.ReproduceClassicFeel );
+		_appliedReproduceClassicFeel = GamePreferences.ReproduceClassicFeel;
+		if ( _camera.IsValid() && _clientVideo.RenderCommandList != null )
+			_camera.AddCommandList( _clientVideo.RenderCommandList, Stage.AfterOpaque, 0 );
+		ScreenTexture = _clientVideo.OutputTexture;
 		HomeScreen.Current?.Hide();
 		_clientLastVideoFrame = -1;
 		_clientInputFrame = 0;
@@ -291,8 +274,10 @@ public sealed partial class EmulatorComponent
 			_clientPendingVideo = null;
 			_clientPendingFrame = -1;
 			_clientLatestState = null;
-			_clientScreenTex?.Dispose();
-			_clientScreenTex = null;
+			if ( _camera.IsValid() && _clientVideo?.RenderCommandList != null )
+				_camera.RemoveCommandList( _clientVideo.RenderCommandList );
+			_clientVideo?.DisposeGpu();
+			_clientVideo = null;
 			ScreenTexture = null;
 		}
 
@@ -354,17 +339,26 @@ public sealed partial class EmulatorComponent
 		return false;
 	}
 
-	private void CreateHostInstance( int slot, byte[] romData )
+	private Gba CreateLinkedCore( byte[] romData, byte[] saveData, int scale, bool localDisplay )
 	{
 		var core = new Gba();
 		core.LoadRom( romData );
+		if ( saveData != null )
+			core.Savedata.Load( saveData );
 		core.Reset();
-		core.Video.InitGpu( scale: 1 );
-		core.Video.SetReproduceClassicFeel( GamePreferences.ReproduceClassicFeel );
+		core.Video.InitGpu( scale );
+		core.Video.SetReproduceClassicFeel( localDisplay && GamePreferences.ReproduceClassicFeel );
+		core.Video.RawPreview = !localDisplay;
 
 		if ( _camera.IsValid() && core.Video.RenderCommandList != null )
 			_camera.AddCommandList( core.Video.RenderCommandList, Stage.AfterOpaque, 0 );
 
+		return core;
+	}
+
+	private void CreateHostInstance( int slot, byte[] romData )
+	{
+		Gba core = CreateLinkedCore( romData, null, scale: 1, localDisplay: false );
 		var inst = _linkSession.Attach( core, slot );
 		_linkInstances.Add( inst );
 	}
@@ -400,13 +394,13 @@ public sealed partial class EmulatorComponent
 
 	private void PresentClientVideo()
 	{
-		if ( _clientScreenTex == null || _clientPendingFrame <= _clientLastVideoFrame )
+		if ( _clientVideo == null || _clientPendingFrame <= _clientLastVideoFrame )
 			return;
 
 		byte[] pixels = _clientPendingVideo;
 		int expected = GbaConstants.ScreenWidth * GbaConstants.ScreenHeight * 4;
 		if ( pixels != null && pixels.Length >= expected )
-			_clientScreenTex.Update( pixels.AsSpan( 0, expected ) );
+			_clientVideo.PresentExternalFrame( pixels.AsSpan( 0, expected ) );
 
 		_clientLastVideoFrame = _clientPendingFrame;
 	}

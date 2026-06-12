@@ -227,6 +227,12 @@ public sealed partial class EmulatorComponent : Component
 				return;
 			}
 
+			if ( _appliedReproduceClassicFeel != GamePreferences.ReproduceClassicFeel )
+			{
+				_clientVideo?.SetReproduceClassicFeel( GamePreferences.ReproduceClassicFeel );
+				_appliedReproduceClassicFeel = GamePreferences.ReproduceClassicFeel;
+			}
+
 			PollInput();
 			TickLinkedClient();
 			RestoreAudioStreamIfNeeded();

@@ -206,6 +206,7 @@ public sealed class NetworkManager : Component, IWirelessNetwork, Component.INet
 		GameTitle = null;
 		GameSha1 = null;
 		GameCode = null;
+		_modeGameCode = null;
 		_joinedGameLoaded = false;
 		_hadRemoteHost = false;
 	}

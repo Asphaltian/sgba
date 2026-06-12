@@ -59,6 +59,7 @@ public partial class GbaVideo
 	public CommandList RenderCommandList { get; private set; }
 	public bool GpuReady { get; private set; }
 	public bool ReproduceClassicFeel { get; private set; } = true;
+	public bool RawPreview { get; set; }
 
 	private int _scaledWidth;
 	private int _scaledHeight;
@@ -123,6 +124,41 @@ public partial class GbaVideo
 		CreateGpuResources( scale );
 	}
 
+	public static GbaVideo CreatePresenter( int scale = 1 )
+	{
+		var video = new GbaVideo( null );
+		video.InitPresentationGpu( scale );
+		return video;
+	}
+
+	private void InitPresentationGpu( int scale )
+	{
+		DisposeGpu();
+		SetGpuScale( scale );
+
+		_nativeFrameTex = Texture.Create( GbaConstants.ScreenWidth, GbaConstants.ScreenHeight )
+			.WithFormat( ImageFormat.RGBA8888 )
+			.WithDynamicUsage()
+			.WithName( "sgba_stream_frame" )
+			.Finish();
+		CreateOutputChainResources( ImageFormat.RGBA8888 );
+
+		FinishGpuInit( "GBA Stream" );
+	}
+
+	public void PresentExternalFrame( ReadOnlySpan<byte> pixels )
+	{
+		if ( !GpuReady || RenderCommandList == null || _nativeFrameTex == null )
+			return;
+
+		UpdateOriginalHistory();
+		_nativeFrameTex.Update( pixels );
+
+		var cmd = RenderCommandList;
+		cmd.Reset();
+		DispatchOutputPasses( cmd );
+	}
+
 	public void DisposeGpu()
 	{
 		DisposeGpuResources();
@@ -173,9 +209,7 @@ public partial class GbaVideo
 
 	private void CreateGpuResources( int scale )
 	{
-		GpuScale = Math.Max( 1, scale );
-		_scaledWidth = GbaConstants.ScreenWidth * GpuScale;
-		_scaledHeight = GbaConstants.ScreenHeight * GpuScale;
+		SetGpuScale( scale );
 
 		_gpuScanlines = new GpuBuffer<ScanlineState>( GbaConstants.VisibleLines );
 		_gpuSprites = new GpuBuffer<GpuSprite>( MaxOamEntries );
@@ -190,17 +224,7 @@ public partial class GbaVideo
 		_objFlagsTex = CreateNativeUintRT( gpuOnly: true );
 		_windowTex = CreateNativeUintRT( gpuOnly: true );
 		_nativeFrameTex = CreateNativeColorRT( ImageFormat.RGBA16161616F );
-		_classicResponseTex = CreateNativeColorRT( ImageFormat.RGBA16161616F, gpuOnly: true );
-		_classicLcdTex = CreateScaledColorRT( ImageFormat.RGBA16161616F, gpuOnly: true );
-		_originalHistoryTex = new Texture[HistoryFrameCount];
-		for ( int i = 0; i < HistoryFrameCount; i++ )
-			_originalHistoryTex[i] = CreateNativeColorRT( ImageFormat.RGBA16161616F, gpuOnly: true );
-
-		OutputTexture = CreateScaledColorRT( ImageFormat.RGBA8888, gpuOnly: true );
-		_suspendPreviewTex = new Texture[2];
-		_suspendPreviewTex[0] = CreateNativeColorRT( ImageFormat.RGBA8888 );
-		_suspendPreviewTex[1] = CreateNativeColorRT( ImageFormat.RGBA8888 );
-		_previewWriteSlot = 0;
+		CreateOutputChainResources( ImageFormat.RGBA16161616F );
 
 		_csBgMode0 = new ComputeShader( "shaders/gba_bg_mode0.shader" );
 		_csBgMode2 = new ComputeShader( "shaders/gba_bg_mode2.shader" );
@@ -210,12 +234,40 @@ public partial class GbaVideo
 		_csObj = new ComputeShader( "shaders/gba_obj.shader" );
 		_csWindow = new ComputeShader( "shaders/gba_window.shader" );
 		_csFinalize = new ComputeShader( "shaders/gba_finalize.shader" );
+
+		FinishGpuInit( "GBA PPU" );
+	}
+
+	private void SetGpuScale( int scale )
+	{
+		GpuScale = Math.Max( 1, scale );
+		_scaledWidth = GbaConstants.ScreenWidth * GpuScale;
+		_scaledHeight = GbaConstants.ScreenHeight * GpuScale;
+	}
+
+	private void CreateOutputChainResources( ImageFormat historyFormat )
+	{
+		_classicResponseTex = CreateNativeColorRT( ImageFormat.RGBA16161616F, gpuOnly: true );
+		_classicLcdTex = CreateScaledColorRT( ImageFormat.RGBA16161616F, gpuOnly: true );
+		_originalHistoryTex = new Texture[HistoryFrameCount];
+		for ( int i = 0; i < HistoryFrameCount; i++ )
+			_originalHistoryTex[i] = CreateNativeColorRT( historyFormat, gpuOnly: true );
+
+		OutputTexture = CreateScaledColorRT( ImageFormat.RGBA8888, gpuOnly: true );
+		_suspendPreviewTex = new Texture[2];
+		_suspendPreviewTex[0] = CreateNativeColorRT( ImageFormat.RGBA8888 );
+		_suspendPreviewTex[1] = CreateNativeColorRT( ImageFormat.RGBA8888 );
+		_previewWriteSlot = 0;
+
 		_csResponseTime = new ComputeShader( "shaders/postprocess/motionblur/response_time.shader" );
 		_csLcdGridV2 = new ComputeShader( "shaders/postprocess/handheld/lcd_cgwg/lcd_grid_v2.shader" );
 		_csGbaColor = new ComputeShader( "shaders/postprocess/handheld/color/gba_color.shader" );
+	}
 
+	private void FinishGpuInit( string commandListName )
+	{
 		ResetOriginalHistory();
-		RenderCommandList = new CommandList( "GBA PPU" );
+		RenderCommandList = new CommandList( commandListName );
 		GpuReady = true;
 	}
 
@@ -520,11 +572,11 @@ public partial class GbaVideo
 			_frameCount++;
 		}
 
-		DispatchGbaColorPass( cmd, displaySource, OutputTexture, scaledSize, _scaledWidth, _scaledHeight );
+		DispatchGbaColorPass( cmd, displaySource, OutputTexture, scaledSize, _scaledWidth, _scaledHeight, 1.0f );
 		cmd.UavBarrier( OutputTexture );
 
 		Texture preview = _suspendPreviewTex[_previewWriteSlot];
-		DispatchGbaColorPass( cmd, previewSource, preview, nativeSize, GbaConstants.ScreenWidth, GbaConstants.ScreenHeight );
+		DispatchGbaColorPass( cmd, previewSource, preview, nativeSize, GbaConstants.ScreenWidth, GbaConstants.ScreenHeight, RawPreview ? 0.0f : 1.0f );
 		cmd.UavBarrier( preview );
 
 		_previewWriteSlot ^= 1;
@@ -572,14 +624,14 @@ public partial class GbaVideo
 		return new FrameSource( _classicLcdTex, scaledSize );
 	}
 
-	private void DispatchGbaColorPass( CommandList cmd, FrameSource source, Texture output, Vector4 outputSize, int dispatchWidth, int dispatchHeight )
+	private void DispatchGbaColorPass( CommandList cmd, FrameSource source, Texture output, Vector4 outputSize, int dispatchWidth, int dispatchHeight, float mode )
 	{
 		cmd.Attributes.Set( "SourceSize", source.Size );
 		cmd.Attributes.Set( "OriginalSize", CreateSizeVector( GbaConstants.ScreenWidth, GbaConstants.ScreenHeight ) );
 		cmd.Attributes.Set( "OutputSize", outputSize );
 		cmd.Attributes.Set( "Source", source.Texture );
 		cmd.Attributes.Set( "OutputTex", output );
-		cmd.Attributes.Set( "mode", 1.0f );
+		cmd.Attributes.Set( "mode", mode );
 		cmd.Attributes.Set( "darken_screen", 0.8f );
 		cmd.DispatchCompute( _csGbaColor, dispatchWidth, dispatchHeight, 1 );
 	}

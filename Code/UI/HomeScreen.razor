@@ -645,6 +645,18 @@
 		return AddComponent<SettingsModal>();
 	}
 
+	private NetplayModal EnsureNetplayPanel()
+	{
+		if (NetplayModal.Current != null && NetplayModal.Current.IsValid())
+			return NetplayModal.Current;
+
+		NetplayModal netplayPanel = Scene.GetAllComponents<NetplayModal>().FirstOrDefault(panel => panel.IsValid());
+		if (netplayPanel != null)
+			return netplayPanel;
+
+		return AddComponent<NetplayModal>();
+	}
+
 	private InputHints EnsureInputHintsPanel()
 	{
 		if (InputHints.Current != null && InputHints.Current.IsValid())
@@ -755,6 +767,7 @@
 		if (SettingsModal.Current?.IsVisible == true) return;
 		if (DetailsModal.Current?.IsVisible == true) return;
 		if (AddGamesModal.Current?.IsVisible == true) return;
+		if (NetplayModal.Current?.IsVisible == true) return;
 		if (new Game.Overlay().IsOpen) return;
 
 		UpdateAllSoftwareScrollState();
@@ -950,7 +963,8 @@
 		switch (index)
 		{
 			case 0:
-				ShowUnavailableToast("#toast.netplay.title", "#toast.netplay.message", "group", NavItems[index].ColorClass);
+				Sound.Play("ui.button.press");
+				EnsureNetplayPanel()?.Show(useGamepad);
 				break;
 			case 1:
 				ShowUnavailableToast("#toast.news.title", "#toast.news.message", "newspaper", NavItems[index].ColorClass);

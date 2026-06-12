@@ -344,6 +344,37 @@
             }
           ],
           "Children": []
+        },
+        {
+          "__guid": "9c2a7b14-3e6d-45f8-9b21-6a4c8d2e1f50",
+          "__version": 2,
+          "Flags": 0,
+          "Name": "Players List",
+          "Position": "0,0,0",
+          "Rotation": "0,0,0,1",
+          "Scale": "1,1,1",
+          "Tags": "",
+          "Enabled": true,
+          "NetworkMode": 2,
+          "NetworkFlags": 0,
+          "NetworkOrphaned": 0,
+          "NetworkTransmit": true,
+          "OwnerTransfer": 1,
+          "Components": [
+            {
+              "__type": "sGBA.PlayersList",
+              "__guid": "7d4e1a98-2b5c-4f3a-8e6d-1c9b0a3f2e84",
+              "__enabled": true,
+              "Flags": 0,
+              "OnComponentDestroy": null,
+              "OnComponentDisabled": null,
+              "OnComponentEnabled": null,
+              "OnComponentFixedUpdate": null,
+              "OnComponentStart": null,
+              "OnComponentUpdate": null
+            }
+          ],
+          "Children": []
         }
       ]
     },

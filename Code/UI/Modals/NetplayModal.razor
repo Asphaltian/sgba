@@ -1,0 +1,472 @@
+@using System.Threading.Tasks
+@using Sandbox.Network
+@using Sandbox.UI
+
+@namespace sGBA
+
+@inherits PanelComponent
+
+<root class="@(IsVisible ? "visible" : "")">
+	<div class="modal-backdrop" onclick=@CloseWithMouse />
+
+	<div class="netplay-modal">
+		<div class="netplay-title">#netplay.title</div>
+		<div class="netplay-subtitle">#netplay.sub</div>
+
+		<div class="netplay-tabs">
+			@foreach (var tab in Tabs)
+			{
+				var t = tab.Index;
+				<div class="netplay-tab @(_tab == t ? "selected" : "")" onclick=@(() => ClickTab(t))>
+					@if (RingActive(IsTabFocused(t)))
+					{
+						<TabRing class="netplay-tab-ring" />
+					}
+					@if (_tab == t)
+					{
+						<div class="netplay-tab-line" />
+					}
+					<div class="netplay-tab-label">@tab.Label</div>
+				</div>
+			}
+		</div>
+
+		<div class="dialog-body">
+			@if (_tab == TabBrowse)
+			{
+				<div class="netplay-list fill">
+					@if (_loading)
+					{
+						<div class="netplay-empty">#netplay.loading</div>
+					}
+					else if (_lobbies.Count == 0)
+					{
+						<div class="netplay-empty">#netplay.empty</div>
+					}
+					else
+					{
+						<div class="netplay-scroll">
+							@for (int i = 0; i < _lobbies.Count; i++)
+							{
+								var idx = i;
+								var lobby = _lobbies[idx];
+								@if (idx > 0)
+								{
+									<div class="netplay-row-divider" />
+								}
+								<div class="netplay-lobby @(FocusClass(IsLobbyFocused(idx)))" onmouseenter=@(() => HoverLobby(idx)) onclick=@(() => ClickLobby(idx))>
+									<SelectionRing Active=@(RingActive(IsLobbyFocused(idx))) StrokeWidth=@(8f) CornerRadius=@(8f) Gap=@(0f) Alpha=@_ringAlpha class="netplay-row-ring" />
+									<div class="netplay-lobby-text">
+										<div class="netplay-lobby-name">@lobby.GetGameTitle()</div>
+										<div class="netplay-lobby-sub">
+											<span>@lobby.GetHostName()</span>
+											<span class="sep">·</span>
+											<span>@ModeLabel(lobby)</span>
+										</div>
+									</div>
+									<div class="netplay-lobby-count">@lobby.Members / @lobby.MaxMembers</div>
+								</div>
+							}
+						</div>
+					}
+				</div>
+			}
+			else
+			{
+				<div class="netplay-list">
+					<NetplayCycleRow Label="#netplay.game" Value=@HostGameLabel Active=@(RingActive(IsGameRowFocused)) RingAlpha=@_ringAlpha Hovered=@HoverGameRow Cycled=@CycleGameWithMouse />
+
+					<div class="netplay-row-divider" />
+
+					<NetplayCycleRow Label="#netplay.visibility" Value=@VisibilityLabel Active=@(RingActive(IsVisFocused)) RingAlpha=@_ringAlpha Hovered=@HoverVis Cycled=@CycleVisWithMouse />
+				</div>
+			}
+		</div>
+
+		<div class="netplay-rule" />
+
+		<div class="dialog-actions">
+			<div class="action-btn @(IsActionDisabled ? "disabled" : "") @(FocusClass(IsActionFocused))" onmouseenter=@HoverAction onclick=@ClickAction>
+				<SelectionRing Active=@(RingActive(IsActionFocused)) StrokeWidth=@(8f) CornerRadius=@(43f) Gap=@(0f) FlatTop=@true Alpha=@_ringAlpha class="action-btn-ring" />
+				<div class="action-btn-fill" />
+				<div class="action-btn-label">@ActionLabel</div>
+			</div>
+		</div>
+	</div>
+</root>
+
+@code
+{
+	private const int TabBrowse = 0;
+	private const int TabHost = 1;
+
+	private const int HostGameRow = 0;
+	private const int HostVisRow = 1;
+	private const int HostActionRow = 2;
+
+	public static NetplayModal Current { get; private set; }
+	public bool IsVisible { get; private set; }
+
+	private readonly record struct TabInfo(int Index, string Label);
+	private static readonly TabInfo[] Tabs =
+	[
+		new(TabBrowse, "#netplay.tab.browse"),
+		new(TabHost, "#netplay.tab.host"),
+	];
+
+	private readonly record struct VisInfo(SessionVisibility Value, string Label);
+	private static readonly VisInfo[] VisOptions =
+	[
+		new(SessionVisibility.Public, "#netplay.vis.public"),
+		new(SessionVisibility.FriendsOnly, "#netplay.vis.friends"),
+		new(SessionVisibility.InviteOnly, "#netplay.vis.invite"),
+	];
+
+	private int _tab = TabBrowse;
+	private bool _onTabs = true;
+	private int _focus;
+	private float _ringAlpha;
+	private bool _openedThisFrame;
+	private readonly FocusInput _input = new();
+
+	private readonly List<LobbyInformation> _lobbies = new();
+	private bool _loading;
+	private int _queryVersion;
+
+	private List<GameEntry> _games = new();
+	private int _hostGame = -1;
+	private SessionVisibility _visibility = SessionVisibility.Public;
+
+	private int ActionFocusIndex => _tab == TabBrowse ? _lobbies.Count : HostActionRow;
+	private int ContentMax => ActionFocusIndex;
+	private bool CanHost => _hostGame >= 0 && _hostGame < _games.Count;
+	private bool IsActionDisabled => _tab == TabHost && !CanHost;
+	private string ActionLabel => _tab == TabBrowse ? "#netplay.refresh" : "#netplay.hostbtn";
+
+	private bool IsTabFocused(int t) => _onTabs && _tab == t;
+	private bool IsLobbyFocused(int i) => !_onTabs && _tab == TabBrowse && _focus == i;
+	private bool IsGameRowFocused => !_onTabs && _tab == TabHost && _focus == HostGameRow;
+	private bool IsVisFocused => !_onTabs && _tab == TabHost && _focus == HostVisRow;
+	private bool IsActionFocused => !_onTabs && _focus == ActionFocusIndex;
+
+	private bool RingActive(bool focused) => focused && _input.UseGamepad;
+	private string FocusClass(bool focused) => focused && _input.UseGamepad ? "focus" : string.Empty;
+
+	private string HostGameLabel => CanHost ? _games[_hostGame].DisplayTitle : "#netplay.nogames";
+
+	private string VisibilityLabel
+	{
+		get
+		{
+			int index = Array.FindIndex(VisOptions, o => o.Value == _visibility);
+			return VisOptions[Math.Max(0, index)].Label;
+		}
+	}
+
+	protected override void OnTreeFirstBuilt() => Current = this;
+	protected override void OnDestroy() { if (Current == this) Current = null; }
+
+	public void Show(bool useGamepad = false)
+	{
+		Current = this;
+		IsVisible = true;
+		_tab = TabBrowse;
+		_onTabs = true;
+		_focus = 0;
+		_ringAlpha = 0f;
+		_openedThisFrame = true;
+		_input.Begin(useGamepad);
+		Sound.Play("ui.popup.message.open");
+		LoadGames();
+		_ = RefreshLobbies();
+		HomeScreen.Current?.RefreshControllerHints();
+		StateHasChanged();
+	}
+
+	public void Hide()
+	{
+		if (!IsVisible)
+			return;
+
+		IsVisible = false;
+		var wasGamepad = _input.UseGamepad;
+		_input.End();
+		HomeScreen.Current?.RestoreInputMode(wasGamepad);
+		Sound.Play("ui.popup.message.close");
+		HomeScreen.Current?.RefreshControllerHints();
+		StateHasChanged();
+	}
+
+	private void LoadGames()
+	{
+		try { _games = GameEntry.Discover(); }
+		catch { _games = new(); }
+
+		if (_hostGame < 0 && _games.Count > 0)
+			_hostGame = 0;
+		if (_hostGame >= _games.Count)
+			_hostGame = _games.Count - 1;
+	}
+
+	private async Task RefreshLobbies()
+	{
+		_loading = true;
+		int version = ++_queryVersion;
+		StateHasChanged();
+
+		List<LobbyInformation> result;
+		try { result = await Networking.QueryLobbies(); }
+		catch { result = new(); }
+
+		if (version != _queryVersion)
+			return;
+
+		_lobbies.Clear();
+		if (result != null)
+			_lobbies.AddRange(result);
+		_loading = false;
+		_focus = Math.Min(_focus, ContentMax);
+		StateHasChanged();
+	}
+
+	private void SetTab(int tab)
+	{
+		if (_tab == tab)
+			return;
+
+		_tab = tab;
+		_focus = 0;
+		Sound.Play("ui.button.over");
+
+		if (tab == TabBrowse)
+			_ = RefreshLobbies();
+		else
+			LoadGames();
+
+		StateHasChanged();
+	}
+
+	private void CycleGame(int dir)
+	{
+		if (_games.Count == 0)
+			return;
+
+		_hostGame = (_hostGame + dir + _games.Count) % _games.Count;
+		Sound.Play("ui.button.over");
+		StateHasChanged();
+	}
+
+	private void CycleVis(int dir)
+	{
+		int current = Array.FindIndex(VisOptions, o => o.Value == _visibility);
+		if (current < 0)
+			current = 0;
+		current = (current + dir + VisOptions.Length) % VisOptions.Length;
+		_visibility = VisOptions[current].Value;
+		Sound.Play("ui.button.over");
+		StateHasChanged();
+	}
+
+	private void JoinLobby(int index)
+	{
+		if (index < 0 || index >= _lobbies.Count)
+			return;
+
+		var net = NetworkManager.Current;
+		if (net == null)
+			return;
+
+		Sound.Play("ui.button.press");
+		net.Join(_lobbies[index].LobbyId);
+		Hide();
+	}
+
+	private void DoHost()
+	{
+		if (!CanHost)
+			return;
+
+		var net = NetworkManager.Current;
+		var emu = EmulatorComponent.Current;
+		if (net == null || !emu.IsValid())
+			return;
+
+		var game = _games[_hostGame];
+		Sound.Play("ui.button.press");
+		net.Host(game, _visibility);
+		emu.Restart(game.Path);
+		Hide();
+	}
+
+	protected override void OnUpdate()
+	{
+		if (!IsVisible)
+			return;
+		if (new Game.Overlay().IsOpen)
+			return;
+
+		if (Input.EscapePressed)
+		{
+			Input.EscapePressed = false;
+			Hide();
+			return;
+		}
+
+		if (!_openedThisFrame)
+		{
+			bool wasGamepad = _input.UseGamepad;
+			var nav = _input.TickRepeating();
+			if (wasGamepad != _input.UseGamepad)
+			{
+				HomeScreen.Current?.RefreshControllerHints();
+				StateHasChanged();
+			}
+
+			if (nav.Up) NavUp();
+			if (nav.Down) NavDown();
+			if (nav.Left) NavLeft();
+			if (nav.Right) NavRight();
+
+			if (Input.Pressed("GBA_A")) Activate();
+			if (Input.Pressed("GBA_B")) { _input.ForceGamepadMode(); Hide(); }
+		}
+		else
+		{
+			_openedThisFrame = false;
+		}
+
+		float target = _input.UseGamepad ? 1f : 0f;
+		float next = MathX.Lerp(_ringAlpha, target, MathF.Min(1f, Time.Delta / 0.12f));
+		if (MathF.Abs(next - target) < 0.01f) next = target;
+		if (MathF.Abs(next - _ringAlpha) > 0.001f)
+		{
+			_ringAlpha = next;
+			StateHasChanged();
+		}
+	}
+
+	private void NavUp()
+	{
+		_input.ForceGamepadMode();
+		if (_onTabs)
+			return;
+
+		if (_focus <= 0)
+			_onTabs = true;
+		else
+			_focus--;
+
+		Sound.Play("ui.button.over");
+		StateHasChanged();
+	}
+
+	private void NavDown()
+	{
+		_input.ForceGamepadMode();
+		if (_onTabs)
+		{
+			_onTabs = false;
+			_focus = 0;
+		}
+		else
+		{
+			_focus = Math.Min(_focus + 1, ContentMax);
+		}
+
+		Sound.Play("ui.button.over");
+		StateHasChanged();
+	}
+
+	private void NavLeft()
+	{
+		_input.ForceGamepadMode();
+		if (_onTabs)
+			SetTab(TabBrowse);
+		else if (IsGameRowFocused)
+			CycleGame(-1);
+		else if (IsVisFocused)
+			CycleVis(-1);
+	}
+
+	private void NavRight()
+	{
+		_input.ForceGamepadMode();
+		if (_onTabs)
+			SetTab(TabHost);
+		else if (IsGameRowFocused)
+			CycleGame(1);
+		else if (IsVisFocused)
+			CycleVis(1);
+	}
+
+	private void Activate()
+	{
+		_input.ForceGamepadMode();
+
+		if (_onTabs)
+		{
+			_onTabs = false;
+			_focus = 0;
+			Sound.Play("ui.button.press");
+			StateHasChanged();
+			return;
+		}
+
+		if (_focus == ActionFocusIndex)
+		{
+			ActivateAction();
+			return;
+		}
+
+		if (_tab == TabBrowse)
+			JoinLobby(_focus);
+		else if (_focus == HostGameRow)
+			CycleGame(1);
+		else if (_focus == HostVisRow)
+			CycleVis(1);
+	}
+
+	private void ActivateAction()
+	{
+		if (IsActionDisabled)
+			return;
+
+		if (_tab == TabBrowse)
+		{
+			Sound.Play("ui.button.press");
+			_ = RefreshLobbies();
+		}
+		else
+		{
+			DoHost();
+		}
+	}
+
+	private void CloseWithMouse() { _input.ForceMouseMode(); Hide(); }
+	private void ClickTab(int t) { _input.ForceMouseMode(); SetTab(t); }
+	private void HoverLobby(int i) { _input.ForceMouseMode(); _onTabs = false; _focus = i; StateHasChanged(); }
+	private void ClickLobby(int i) { _input.ForceMouseMode(); JoinLobby(i); }
+	private void HoverGameRow() { _input.ForceMouseMode(); _onTabs = false; _focus = HostGameRow; StateHasChanged(); }
+	private void HoverVis() { _input.ForceMouseMode(); _onTabs = false; _focus = HostVisRow; StateHasChanged(); }
+	private void CycleGameWithMouse(int dir) { _input.ForceMouseMode(); CycleGame(dir); }
+	private void CycleVisWithMouse(int dir) { _input.ForceMouseMode(); CycleVis(dir); }
+	private void HoverAction() { _input.ForceMouseMode(); _onTabs = false; _focus = ActionFocusIndex; StateHasChanged(); }
+
+	private void ClickAction()
+	{
+		_input.ForceMouseMode();
+		ActivateAction();
+	}
+
+	private static string ModeLabel(LobbyInformation lobby) =>
+		lobby.GetMode() == SessionMode.LinkCable ? "#netplay.mode.link" : "#netplay.mode.wireless";
+
+	protected override int BuildHash()
+	{
+		int hash = HashCode.Combine(IsVisible, _tab, _onTabs, _focus, _loading, _hostGame);
+		hash = HashCode.Combine(hash, (int)_visibility, _games.Count, _lobbies.Count, _input.UseGamepad, _ringAlpha);
+		foreach (var lobby in _lobbies)
+			hash = HashCode.Combine(hash, lobby.LobbyId, lobby.Members);
+		return hash;
+	}
+}

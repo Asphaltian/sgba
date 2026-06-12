@@ -1,0 +1,421 @@
+NetplayModal
+{
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: 100%;
+	height: 100%;
+	pointer-events: none;
+	font-family: Poppins;
+	z-index: 20;
+	display: flex;
+	opacity: 0;
+	align-items: center;
+	justify-content: center;
+	transition: opacity 0.16s ease;
+
+	&.visible
+	{
+		opacity: 1;
+		pointer-events: all;
+
+		.netplay-modal
+		{
+			opacity: 1;
+			transform: translateY( 0 ) scale( 1 );
+		}
+	}
+
+	.modal-backdrop
+	{
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 100%;
+		height: 100%;
+		background-color: rgba( 4, 5, 7, 0.66 );
+		z-index: 0;
+	}
+
+	.netplay-modal
+	{
+		position: relative;
+		width: 760px;
+		height: 560px;
+		background-color: #f2f4f7;
+		border-radius: 3.982vh;
+		box-shadow: 0 12px 32px rgba( 0, 0, 0, 0.28 );
+		overflow: visible;
+		opacity: 0;
+		transform: translateY( 12px ) scale( 0.985 );
+		transition: opacity 0.18s ease, transform 0.18s ease;
+		z-index: 1;
+	}
+
+	.netplay-title
+	{
+		position: absolute;
+		left: 0;
+		top: 32px;
+		width: 760px;
+		height: 34px;
+		align-items: center;
+		justify-content: center;
+		font-size: 25px;
+		font-weight: 400;
+		line-height: 32px;
+		color: #20242a;
+		text-align: center;
+		white-space: nowrap;
+		z-index: 3;
+	}
+
+	.netplay-subtitle
+	{
+		position: absolute;
+		left: 52px;
+		top: 74px;
+		width: 656px;
+		height: 24px;
+		align-items: center;
+		justify-content: center;
+		font-size: 16px;
+		font-weight: 400;
+		line-height: 22px;
+		color: rgba( 32, 36, 42, 0.64 );
+		text-align: center;
+		white-space: nowrap;
+		z-index: 3;
+	}
+
+	.netplay-tabs
+	{
+		position: absolute;
+		left: 0;
+		top: 120px;
+		width: 760px;
+		height: 52px;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		gap: 12px;
+		overflow: visible;
+		z-index: 3;
+	}
+
+	.netplay-tab
+	{
+		position: relative;
+		width: 220px;
+		height: 52px;
+		border-radius: 8px;
+		align-items: center;
+		padding-left: 38px;
+		font-size: 18px;
+		font-weight: 600;
+		line-height: 24px;
+		color: #20242a;
+		cursor: pointer;
+		overflow: visible;
+
+		&.selected
+		{
+			color: #1898ff;
+		}
+	}
+
+	.netplay-tab-ring
+	{
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 100%;
+		height: 100%;
+		border-radius: 8px;
+		overflow: hidden;
+		pointer-events: none;
+		z-index: 1;
+	}
+
+	.netplay-tab-line
+	{
+		position: absolute;
+		left: 17px;
+		top: 12px;
+		width: 4px;
+		height: 28px;
+		border-radius: 2px;
+		background-color: #1898ff;
+		z-index: 2;
+	}
+
+	.netplay-tab-label
+	{
+		position: relative;
+		z-index: 2;
+	}
+
+	.dialog-body
+	{
+		position: absolute;
+		left: 48px;
+		top: 198px;
+		width: 664px;
+		height: 290px;
+		flex-direction: column;
+		z-index: 3;
+	}
+
+	.netplay-list
+	{
+		width: 100%;
+		flex-direction: column;
+		border-top: 1px solid rgba( 35, 39, 46, 0.2 );
+		border-bottom: 1px solid rgba( 35, 39, 46, 0.2 );
+
+		&.fill
+		{
+			height: 100%;
+			border-bottom: 0;
+		}
+	}
+
+	.netplay-scroll
+	{
+		flex-grow: 1;
+		min-height: 0;
+		flex-direction: column;
+		overflow-y: scroll;
+		margin: -4px;
+		padding: 4px;
+	}
+
+	.netplay-row-divider
+	{
+		width: 100%;
+		height: 1px;
+		background-color: rgba( 35, 39, 46, 0.2 );
+		flex-shrink: 0;
+		z-index: 1;
+	}
+
+	.netplay-row-ring
+	{
+		position: absolute;
+		left: -4px;
+		top: -4px;
+		right: -4px;
+		bottom: -4px;
+		border-radius: 10px;
+		overflow: visible;
+		pointer-events: none;
+		z-index: 2;
+	}
+
+	.netplay-empty
+	{
+		width: 100%;
+		flex-grow: 1;
+		align-items: center;
+		justify-content: center;
+		font-size: 16px;
+		font-weight: 400;
+		color: rgba( 32, 36, 42, 0.5 );
+		text-align: center;
+	}
+
+	.netplay-lobby
+	{
+		position: relative;
+		width: 100%;
+		height: 76px;
+		flex-shrink: 0;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		padding: 0 20px;
+		cursor: pointer;
+		overflow: visible;
+
+		&.focus { background-color: rgba( 255, 255, 255, 0.34 ); }
+	}
+
+	.netplay-lobby-text
+	{
+		flex-direction: column;
+		justify-content: center;
+		min-width: 0;
+		z-index: 3;
+	}
+
+	.netplay-lobby-name
+	{
+		font-size: 18px;
+		font-weight: 500;
+		line-height: 26px;
+		color: #20242a;
+		white-space: nowrap;
+	}
+
+	.netplay-lobby-sub
+	{
+		flex-direction: row;
+		gap: 6px;
+		font-size: 14px;
+		font-weight: 400;
+		line-height: 20px;
+		color: rgba( 32, 36, 42, 0.64 );
+		white-space: nowrap;
+	}
+
+	.netplay-lobby-count
+	{
+		flex-shrink: 0;
+		font-size: 18px;
+		font-weight: 400;
+		line-height: 26px;
+		color: #20242a;
+		white-space: nowrap;
+		z-index: 3;
+	}
+
+	.netplay-cyclerow
+	{
+		position: relative;
+		width: 100%;
+		height: 92px;
+		flex-shrink: 0;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		padding: 0 20px;
+		cursor: pointer;
+		overflow: visible;
+
+		&.focus { background-color: rgba( 255, 255, 255, 0.34 ); }
+	}
+
+	.netplay-row-name
+	{
+		font-size: 24px;
+		font-weight: 400;
+		line-height: 32px;
+		color: #20242a;
+		white-space: nowrap;
+		z-index: 3;
+	}
+
+	.netplay-row-value
+	{
+		flex-direction: row;
+		align-items: center;
+		gap: 10px;
+		z-index: 3;
+	}
+
+	.netplay-chevron
+	{
+		font-family: "Material Icons";
+		font-size: 24px;
+		color: rgba( 32, 36, 42, 0.45 );
+	}
+
+	.netplay-value-label
+	{
+		max-width: 360px;
+		min-width: 150px;
+		justify-content: center;
+		font-size: 19px;
+		font-weight: 600;
+		line-height: 26px;
+		color: #101216;
+		text-align: center;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.netplay-rule
+	{
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 72px;
+		height: 1px;
+		background-color: rgba( 35, 39, 46, 0.18 );
+		z-index: 2;
+	}
+
+	.dialog-actions
+	{
+		position: absolute;
+		left: 0;
+		bottom: 0;
+		width: 100%;
+		height: 72px;
+		align-items: center;
+		justify-content: center;
+		z-index: 3;
+	}
+
+	.action-btn
+	{
+		position: relative;
+		width: 760px;
+		height: 72px;
+		border-radius: 0;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+		overflow: visible;
+
+		&.disabled .action-btn-label { color: rgba( 32, 36, 42, 0.32 ); }
+	}
+
+	.action-btn-ring
+	{
+		position: absolute;
+		left: -4px;
+		top: -4px;
+		width: 768px;
+		height: 80px;
+		border-radius: 0 0 36px 36px;
+		overflow: visible;
+		pointer-events: none;
+		z-index: 2;
+	}
+
+	.action-btn-fill
+	{
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 760px;
+		height: 72px;
+		border-radius: 0 0 3.982vh 3.982vh;
+		border: 0;
+		background-color: #f2f4f7;
+		pointer-events: none;
+		z-index: 1;
+	}
+
+	.action-btn-label
+	{
+		position: relative;
+		width: 760px;
+		height: 72px;
+		align-items: center;
+		justify-content: center;
+		font-size: 24px;
+		font-weight: 400;
+		line-height: 30px;
+		color: #1f76ad;
+		text-align: center;
+		z-index: 3;
+	}
+
+	.action-btn.focus .action-btn-fill
+	{
+		background-color: rgba( 255, 255, 255, 0.35 );
+	}
+}
