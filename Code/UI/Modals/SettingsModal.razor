@@ -139,7 +139,7 @@
 		if (nav.Up) NavigateUp();
 		if (nav.Down) NavigateDown();
 
-		if (Input.Pressed("GBA_A"))
+		if (Input.Pressed("UI_Accept"))
 		{
 			SetGamepadMode();
 			Sound.Play("ui.button.press");
@@ -150,7 +150,7 @@
 				ToggleSmallScreen(playSound: false);
 		}
 
-		if (Input.Pressed("GBA_B"))
+		if (Input.Pressed("UI_Back"))
 		{
 			SetGamepadMode();
 			Sound.Play("ui.button.press");

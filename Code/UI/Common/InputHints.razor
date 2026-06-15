@@ -7,38 +7,38 @@
 <root class="@RootClass">
 	@if (DetailsOpen)
 	{
-		<ControllerHint Action="GBA_B" Label="#prompt.back" />
+		<ControllerHint Action="UI_Back" Label="#prompt.back" />
 	}
 	else if (NetplayOpen)
 	{
-		<ControllerHint Action="GBA_B" Label="#prompt.back" />
-		<ControllerHint Action="GBA_A" Label="#prompt.ok" />
+		<ControllerHint Action="UI_Back" Label="#prompt.back" />
+		<ControllerHint Action="UI_Accept" Label="#prompt.ok" />
 	}
 	else if (SettingsOpen)
 	{
-		<ControllerHint Action="GBA_B" Label="#prompt.back" />
-		<ControllerHint Action="GBA_A" Label="#prompt.ok" />
+		<ControllerHint Action="UI_Back" Label="#prompt.back" />
+		<ControllerHint Action="UI_Accept" Label="#prompt.ok" />
 	}
 	else if (Home?.AllSoftwareOpen == true)
 	{
 		@if (Home?.CanOpenDetails == true)
 		{
-			<ControllerHint Action="GBA_Select" Label="#prompt.details" />
+			<ControllerHint Action="UI_Details" Label="#prompt.details" />
 		}
-		<ControllerHint Action="GBA_B" Label="#prompt.back" />
-		<ControllerHint Action="GBA_A" Label="@(Home?.CanOpenDetails == true ? "#prompt.start" : "#prompt.ok")" />
+		<ControllerHint Action="UI_Back" Label="#prompt.back" />
+		<ControllerHint Action="UI_Accept" Label="@(Home?.CanOpenDetails == true ? "#prompt.start" : "#prompt.ok")" />
 	}
 	else if (Home?.NavigationFocused == true)
 	{
-		<ControllerHint Action="GBA_A" Label="#prompt.ok" />
+		<ControllerHint Action="UI_Accept" Label="#prompt.ok" />
 	}
 	else if (Home?.CanOpenDetails == true || Home?.HasHomeAction == true)
 	{
 		@if (Home?.CanOpenDetails == true)
 		{
-			<ControllerHint Action="GBA_Select" Label="#prompt.details" />
+			<ControllerHint Action="UI_Details" Label="#prompt.details" />
 		}
-		<ControllerHint Action="GBA_A" Label=@Home.PrimaryActionLabel />
+		<ControllerHint Action="UI_Accept" Label=@Home.PrimaryActionLabel />
 	}
 </root>
 

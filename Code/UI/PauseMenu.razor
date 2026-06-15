@@ -164,7 +164,7 @@
 				ExitSlotPanel();
 		}
 
-		if (Input.Pressed("GBA_A"))
+		if (Input.Pressed("UI_Accept"))
 		{
 			SetGamepadMode();
 			Sound.Play("ui.button.press");
@@ -177,7 +177,7 @@
 				ActivateItem(_selectedIndex);
 		}
 
-		if (Input.Pressed("GBA_B"))
+		if (Input.Pressed("UI_Back"))
 		{
 			SetGamepadMode();
 			Sound.Play("ui.button.press");
@@ -365,7 +365,7 @@
 			_confirmSelection = _confirmSelection == 0 ? 1 : 0;
 		}
 
-		if (Input.Pressed("GBA_A"))
+		if (Input.Pressed("UI_Accept"))
 		{
 			SetGamepadMode();
 			Sound.Play("ui.button.press");
@@ -376,7 +376,7 @@
 				CancelOverwrite();
 		}
 
-		if (Input.Pressed("GBA_B"))
+		if (Input.Pressed("UI_Back"))
 		{
 			SetGamepadMode();
 			Sound.Play("ui.button.press");

@@ -1,6 +1,9 @@
+using System.Collections.Generic;
+using Emulotl;
+
 namespace sGBA;
 
-public class Gba
+public class Gba : IEmulatorCore
 {
 	public GbaTiming Timing { get; } = new();
 	public ArmCore Cpu { get; private set; }
@@ -23,6 +26,8 @@ public class Gba
 	public bool AllowOpposingDirections { get; set; } = true;
 	public bool HaltPending { get; set; }
 
+	private readonly IVideoOutput[] _screens;
+
 	public Gba()
 	{
 		Memory = new GbaMemory( this );
@@ -35,7 +40,25 @@ public class Gba
 		Audio = new GbaAudio( this );
 		Savedata = new GbaSavedata( this );
 		Hardware = new GbaCartridgeHardware( this );
+
+		_screens = [Video];
 	}
+
+	public SystemProfile Profile => GbaSystem.Profile;
+
+	IReadOnlyList<IVideoOutput> IEmulatorCore.Screens => _screens;
+	IAudioOutput IEmulatorCore.Audio => Audio;
+	ISaveData IEmulatorCore.SaveData => Savedata;
+
+	public void SetButtons( int player, ulong pressedMask )
+	{
+		KeysActive = (ushort)(pressedMask & 0x03FF);
+		Io.TestKeypadIrq();
+	}
+
+	public byte[] SaveState( byte[] screenshot ) => GbaSerialize.Save( this, screenshot );
+
+	public void LoadState( byte[] data ) => GbaSerialize.Load( this, data );
 
 	public void LoadRom( byte[] romData )
 	{

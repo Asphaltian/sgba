@@ -327,8 +327,8 @@
 			if (nav.Left) NavLeft();
 			if (nav.Right) NavRight();
 
-			if (Input.Pressed("GBA_A")) Activate();
-			if (Input.Pressed("GBA_B")) { _input.ForceGamepadMode(); Hide(); }
+			if (Input.Pressed("UI_Accept")) Activate();
+			if (Input.Pressed("UI_Back")) { _input.ForceGamepadMode(); Hide(); }
 		}
 		else
 		{

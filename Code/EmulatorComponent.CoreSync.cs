@@ -5,7 +5,7 @@ namespace sGBA;
 
 public sealed partial class EmulatorComponent
 {
-	private sealed class GbaCoreSync
+	private sealed class EmulatorCoreSync
 	{
 		public int VideoFramePending { get; private set; }
 		public bool VideoFrameWait { get; private set; }

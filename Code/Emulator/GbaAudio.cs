@@ -1,8 +1,9 @@
 using System.IO;
+using Emulotl;
 
 namespace sGBA;
 
-public partial class GbaAudio
+public partial class GbaAudio : IAudioOutput
 {
 	public Gba Gba { get; }
 
@@ -11,6 +12,12 @@ public partial class GbaAudio
 	public const int SamplesPerFrame = (GbaConstants.VideoTotalLength + CyclesPerSample - 1) / CyclesPerSample;
 	public short[] OutputBuffer { get; set; } = new short[SamplesPerFrame * 2];
 	public int SamplesWritten { get; set; }
+
+	int IAudioOutput.SampleRate => SampleRate;
+	int IAudioOutput.Channels => 2;
+	int IAudioOutput.SamplesPerFrame => SamplesPerFrame;
+	short[] IAudioOutput.OutputBuffer => OutputBuffer;
+	int IAudioOutput.SamplesWritten { get => SamplesWritten; set => SamplesWritten = value; }
 
 	private long _nextSampleCycle;
 	private long _nextFrameSeqCycle;

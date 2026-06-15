@@ -36,10 +36,12 @@ public sealed partial class EmulatorComponent
 		if ( romData == null )
 			return;
 
-		GbaCoreThread soloThread = _coreThread;
+		EnsureProfile();
+
+		EmulatorCoreThread soloThread = _coreThread;
 		_coreThread = null;
 		soloThread?.End();
-		Gba soloCore = soloThread?.Core;
+		Gba soloCore = soloThread?.Core as Gba;
 
 		_linkSession = new LinkCableSession();
 
@@ -111,6 +113,8 @@ public sealed partial class EmulatorComponent
 			return;
 
 		TearDownCore();
+
+		EnsureProfile();
 
 		_clientVideo = GbaVideo.CreatePresenter( ComputeAutoScale() );
 		_clientVideo.SetReproduceClassicFeel( GamePreferences.ReproduceClassicFeel );
@@ -223,7 +227,7 @@ public sealed partial class EmulatorComponent
 		{
 			try
 			{
-				GbaSerialize.Load( core, data );
+				core.LoadState( data );
 				if ( renderFrame )
 				{
 					for ( int i = 0; i < StateRewarmFrames; i++ )
@@ -476,10 +480,10 @@ public sealed partial class EmulatorComponent
 	{
 		double now = _videoClock?.Elapsed.TotalSeconds ?? 0;
 
-		if ( _nextVideoFrameDue <= 0 || now - _nextVideoFrameDue > GbaFrameTime * MaxPendingFrames )
-			_nextVideoFrameDue = now + GbaFrameTime;
+		if ( _nextVideoFrameDue <= 0 || now - _nextVideoFrameDue > _frameTime * MaxPendingFrames )
+			_nextVideoFrameDue = now + _frameTime;
 		else
-			_nextVideoFrameDue += GbaFrameTime;
+			_nextVideoFrameDue += _frameTime;
 	}
 
 	private void CaptureAndSendHostVideo()

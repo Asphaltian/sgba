@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Threading;
 using Sandbox.Rendering;
+using Emulotl;
 
 namespace sGBA;
 
@@ -12,7 +13,7 @@ public sealed partial class EmulatorComponent : Component
 	public string GameCode { get; private set; }
 
 	public static EmulatorComponent Current { get; private set; }
-	public Gba Core => _coreThread?.Core;
+	public IEmulatorCore Core => _coreThread?.Core;
 	public Texture ScreenTexture { get; private set; }
 	public bool IsReady { get; private set; }
 	public string ErrorMessage { get; private set; }
@@ -22,22 +23,19 @@ public sealed partial class EmulatorComponent : Component
 	private string _savePath;
 	private CameraComponent _camera;
 	private object _coreLock = new();
-	private GbaCoreThread _coreThread;
+	private EmulatorCoreThread _coreThread;
+	private SystemProfile _profile;
+	private double _frameTime;
 	private Stopwatch _videoClock;
 	private double _nextVideoFrameDue;
 
-	private const int AllKeysReleased = 0x03FF;
 	private const int AudioPrefillFrames = 2;
 	private const int AudioHighWaterFrames = 3;
-	private const int GbaClockRate = 1 << 24;
-	private const int GbaCyclesPerFrame = 228 * 1232;
-	private const double GbaNativeFps = (double)GbaClockRate / GbaCyclesPerFrame;
-	private const double GbaFrameTime = (double)GbaCyclesPerFrame / GbaClockRate;
 	private const int MaxPendingFrames = 3;
 	private const int SyncWaitMilliseconds = 50;
 	private const float StickDeadzone = 0.3f;
 
-	private int _inputKeys = AllKeysReleased;
+	private int _inputKeys;
 	private bool _videoFramePending;
 	private bool _paused;
 	private bool _coreHalted;
@@ -51,10 +49,20 @@ public sealed partial class EmulatorComponent : Component
 	protected override void OnStart()
 	{
 		Current = this;
+		EmulatorSystems.EnsureRegistered();
 		GbaLog.SetBackend( LogBackend );
 		_camera = Scene.Camera;
 		if ( !string.IsNullOrEmpty( RomPath ) )
 			_initCoreOnUpdate = true;
+	}
+
+	private bool EnsureProfile()
+	{
+		EmulatorSystems.EnsureRegistered();
+		_profile = SystemRegistry.ResolveByPath( RomPath ) ?? _profile;
+		if ( _profile != null )
+			_frameTime = 1.0 / _profile.NativeFps;
+		return _profile != null;
 	}
 
 	public void Restart( string romPath )
@@ -82,20 +90,26 @@ public sealed partial class EmulatorComponent : Component
 
 	private void TearDownCore()
 	{
-		GbaCoreThread coreThread = _coreThread;
+		EmulatorCoreThread coreThread = _coreThread;
 		_coreThread = null;
 		coreThread?.End();
 
 		lock ( CoreLock )
 		{
-			Gba core = coreThread?.Core;
-			if ( core?.Savedata != null && core.Savedata.Data.Length > 0 && _savePath != null )
-				FileSystem.Data.WriteAllBytes( _savePath, core.Savedata.Data );
+			IEmulatorCore core = coreThread?.Core;
+			if ( core?.SaveData != null && core.SaveData.Data.Length > 0 && _savePath != null )
+				FileSystem.Data.WriteAllBytes( _savePath, core.SaveData.Data );
 
-			if ( _camera.IsValid() && core?.Video?.RenderCommandList != null )
-				_camera.RemoveCommandList( core.Video.RenderCommandList );
+			if ( core != null )
+			{
+				foreach ( IVideoOutput screen in core.Screens )
+				{
+					if ( _camera.IsValid() && screen.RenderCommandList != null )
+						_camera.RemoveCommandList( screen.RenderCommandList );
+					screen.DisposeGpu();
+				}
+			}
 
-			core?.Video?.DisposeGpu();
 			ScreenTexture = null;
 		}
 
@@ -110,15 +124,8 @@ public sealed partial class EmulatorComponent : Component
 		_initDeferFrames = 0;
 		_paused = false;
 		_coreHalted = false;
-		Interlocked.Exchange( ref _inputKeys, AllKeysReleased );
+		Interlocked.Exchange( ref _inputKeys, 0 );
 		IsReady = false;
-	}
-
-	private static string ReadGameCode( byte[] romData )
-	{
-		if ( romData == null || romData.Length < 0xB0 )
-			return null;
-		return System.Text.Encoding.ASCII.GetString( romData, 0xAC, 4 ).TrimEnd( '\0' );
 	}
 
 	private void InitCore()
@@ -132,44 +139,56 @@ public sealed partial class EmulatorComponent : Component
 				return;
 			}
 
-			BaseFileSystem romFs = FileSystem.Mounted.FileExists( RomPath ) ? FileSystem.Mounted : FileSystem.Data;
-			byte[] romData = romFs.ReadAllBytes( RomPath ).ToArray();
-			if ( romData.Length < 192 )
+			if ( !EnsureProfile() )
 			{
-				ErrorMessage = "ROM file is too small to be a valid GBA ROM.";
+				ErrorMessage = $"No emulator system handles ROM: {RomPath}";
 				GbaLog.Write( LogCategory.GBA, LogLevel.Error, ErrorMessage );
 				return;
 			}
 
-			GameCode = ReadGameCode( romData );
+			BaseFileSystem romFs = FileSystem.Mounted.FileExists( RomPath ) ? FileSystem.Mounted : FileSystem.Data;
+			byte[] romData = romFs.ReadAllBytes( RomPath ).ToArray();
+			if ( romData.Length < 192 )
+			{
+				ErrorMessage = $"ROM file is too small to be a valid {_profile.DisplayName} ROM.";
+				GbaLog.Write( LogCategory.GBA, LogLevel.Error, ErrorMessage );
+				return;
+			}
 
-			Gba core = new();
+			GameCode = _profile.ReadGameId( romData );
+
+			IEmulatorCore core = _profile.CreateCore();
 			core.LoadRom( romData );
 
 			_savePath = "saves/" + System.IO.Path.GetFileNameWithoutExtension( RomPath ) + ".sav";
 			if ( FileSystem.Data.FileExists( _savePath ) )
 			{
 				byte[] saveData = FileSystem.Data.ReadAllBytes( _savePath ).ToArray();
-				core.Savedata.Load( saveData );
+				core.SaveData.Load( saveData );
 			}
 
 			core.Reset();
-			core.Video.InitGpu( scale: ComputeAutoScale() );
-			core.Video.SetReproduceClassicFeel( GamePreferences.ReproduceClassicFeel );
-			_appliedReproduceClassicFeel = GamePreferences.ReproduceClassicFeel;
-			ScreenTexture = core.Video.OutputTexture;
 
-			if ( _camera.IsValid() && core.Video.RenderCommandList != null )
-				_camera.AddCommandList( core.Video.RenderCommandList, Stage.AfterOpaque, 0 );
+			int scale = ComputeAutoScale();
+			DisplayOptions display = CurrentDisplayOptions();
+			foreach ( IVideoOutput screen in core.Screens )
+			{
+				screen.InitGpu( scale );
+				screen.ApplyDisplayOptions( display );
+				if ( _camera.IsValid() && screen.RenderCommandList != null )
+					_camera.AddCommandList( screen.RenderCommandList, Stage.AfterOpaque, 0 );
+			}
+			_appliedReproduceClassicFeel = GamePreferences.ReproduceClassicFeel;
+			ScreenTexture = core.Screens[0].OutputTexture;
 
 			_stateBasePath = "states/" + System.IO.Path.GetFileNameWithoutExtension( RomPath );
 
 			try { InitAudioStream(); }
 			catch ( Exception audioEx ) { GbaLog.Write( LogCategory.GBAAudio, LogLevel.Warn, $"Audio init failed: {audioEx.Message}" ); }
 
-			_coreThread = new GbaCoreThread( core, CoreLock, ReadInputKeysActive, LogCoreThreadError, LogCoreThreadReset );
-			_coreThread.Sync.LoadCoreOptions( audioSync: true, videoSync: true, fpsTarget: (float)GbaNativeFps );
-			_coreThread.Sync.AudioHighWater = GbaAudio.SamplesPerFrame * AudioHighWaterFrames;
+			_coreThread = new EmulatorCoreThread( core, CoreLock, ReadInputKeysActive, LogCoreThreadError, LogCoreThreadReset );
+			_coreThread.Sync.LoadCoreOptions( audioSync: true, videoSync: true, fpsTarget: (float)_profile.NativeFps );
+			_coreThread.Sync.AudioHighWater = _profile.AudioSamplesPerFrame * AudioHighWaterFrames;
 			ResetVideoClock();
 			_coreThread.Start();
 
@@ -194,8 +213,12 @@ public sealed partial class EmulatorComponent : Component
 			_audioStream = null;
 		}
 
-		_audioStream = new SoundStream( GbaAudio.SampleRate, 2 );
-		_audioStream.WriteData( new short[GbaAudio.SamplesPerFrame * 2 * AudioPrefillFrames] );
+		int sampleRate = _profile?.AudioSampleRate ?? GbaAudio.SampleRate;
+		int channels = _profile?.AudioChannels ?? 2;
+		int samplesPerFrame = _profile?.AudioSamplesPerFrame ?? GbaAudio.SamplesPerFrame;
+
+		_audioStream = new SoundStream( sampleRate, channels );
+		_audioStream.WriteData( new short[samplesPerFrame * channels * AudioPrefillFrames] );
 		_soundHandle = _audioStream.Play( volume: _paused ? 0f : 1.0f );
 		_soundHandle.SpacialBlend = 0f;
 		_soundHandle.OcclusionEnabled = false;
@@ -205,11 +228,14 @@ public sealed partial class EmulatorComponent : Component
 		_soundHandle.Stop( float.MaxValue );
 	}
 
-	private static int ComputeAutoScale()
+	private DisplayOptions CurrentDisplayOptions() => new( GamePreferences.ReproduceClassicFeel, GamePreferences.DisplayWithSmallScreen );
+
+	private int ComputeAutoScale()
 	{
 		int screenWidth = Screen.Width > 0 ? (int)Screen.Width : 1920;
 		int screenHeight = Screen.Height > 0 ? (int)Screen.Height : 1080;
-		return Math.Clamp( Math.Min( screenWidth / 240, screenHeight / 160 ), 1, 8 );
+		ScreenSpec native = _profile?.Screens is { Length: > 0 } screens ? screens[0] : new ScreenSpec( 240, 160 );
+		return Math.Clamp( Math.Min( screenWidth / native.Width, screenHeight / native.Height ), 1, 8 );
 	}
 
 	protected override void OnUpdate()
@@ -310,7 +336,7 @@ public sealed partial class EmulatorComponent : Component
 
 	private ushort ReadInputKeysActive()
 	{
-		return (ushort)(AllKeysReleased ^ Interlocked.CompareExchange( ref _inputKeys, 0, 0 ));
+		return (ushort)Interlocked.CompareExchange( ref _inputKeys, 0, 0 );
 	}
 
 	private void ResetVideoClock()
@@ -320,7 +346,7 @@ public sealed partial class EmulatorComponent : Component
 		_nextVideoFrameDue = 0;
 	}
 
-	private bool IsVideoFrameDue( GbaCoreSync sync )
+	private bool IsVideoFrameDue( EmulatorCoreSync sync )
 	{
 		if ( _videoClock == null )
 			ResetVideoClock();
@@ -331,9 +357,9 @@ public sealed partial class EmulatorComponent : Component
 		return _videoClock.Elapsed.TotalSeconds >= _nextVideoFrameDue;
 	}
 
-	private void AdvanceVideoClock( GbaCoreSync sync )
+	private void AdvanceVideoClock( EmulatorCoreSync sync )
 	{
-		double frameTime = sync?.FpsTarget > 0 ? 1.0 / sync.FpsTarget : GbaFrameTime;
+		double frameTime = sync?.FpsTarget > 0 ? 1.0 / sync.FpsTarget : _frameTime;
 		double now = _videoClock?.Elapsed.TotalSeconds ?? 0;
 
 		if ( _nextVideoFrameDue <= 0 || now - _nextVideoFrameDue > frameTime * MaxPendingFrames )
@@ -342,7 +368,7 @@ public sealed partial class EmulatorComponent : Component
 			_nextVideoFrameDue += frameTime;
 	}
 
-	private void RunOnCoreThread( Action<Gba> action )
+	private void RunOnCoreThread( Action<IEmulatorCore> action )
 	{
 		_coreThread?.RunFunction( action );
 	}
@@ -352,32 +378,37 @@ public sealed partial class EmulatorComponent : Component
 		if ( _paused )
 			return;
 
-		Gba core = Core;
-		if ( core?.Video == null )
+		IEmulatorCore core = Core;
+		if ( core == null || core.Screens.Count == 0 )
 			return;
 
 		int desiredScale = ComputeAutoScale();
-		if ( core.Video.GpuScale == desiredScale )
+		if ( core.Screens[0].GpuScale == desiredScale )
 			return;
 
 		lock ( CoreLock )
 		{
-			if ( Core != core || core.Video == null )
+			if ( Core != core || core.Screens.Count == 0 )
 				return;
 
-			if ( core.Video.GpuScale == desiredScale )
+			if ( core.Screens[0].GpuScale == desiredScale )
 				return;
 
-			if ( _camera.IsValid() && core.Video.RenderCommandList != null )
-				_camera.RemoveCommandList( core.Video.RenderCommandList );
+			DisplayOptions display = CurrentDisplayOptions();
+			foreach ( IVideoOutput screen in core.Screens )
+			{
+				if ( _camera.IsValid() && screen.RenderCommandList != null )
+					_camera.RemoveCommandList( screen.RenderCommandList );
 
-			core.Video.InitGpu( desiredScale );
-			core.Video.SetReproduceClassicFeel( GamePreferences.ReproduceClassicFeel );
+				screen.InitGpu( desiredScale );
+				screen.ApplyDisplayOptions( display );
+
+				if ( _camera.IsValid() && screen.RenderCommandList != null )
+					_camera.AddCommandList( screen.RenderCommandList, Stage.AfterOpaque, 0 );
+			}
+
 			_appliedReproduceClassicFeel = GamePreferences.ReproduceClassicFeel;
-			ScreenTexture = core.Video.OutputTexture;
-
-			if ( _camera.IsValid() && core.Video.RenderCommandList != null )
-				_camera.AddCommandList( core.Video.RenderCommandList, Stage.AfterOpaque, 0 );
+			ScreenTexture = core.Screens[0].OutputTexture;
 
 			_videoFramePending = true;
 			_coreThread?.Sync.ForceFrame();
@@ -404,8 +435,8 @@ public sealed partial class EmulatorComponent : Component
 
 	private void WaitForPostedCoreFrame()
 	{
-		GbaCoreThread coreThread = _coreThread;
-		GbaCoreSync sync = coreThread?.Sync;
+		EmulatorCoreThread coreThread = _coreThread;
+		EmulatorCoreSync sync = coreThread?.Sync;
 		if ( sync == null || !IsVideoFrameDue( sync ) )
 			return;
 
@@ -417,14 +448,16 @@ public sealed partial class EmulatorComponent : Component
 		AdvanceVideoClock( sync );
 	}
 
-	private void DrainPostedCoreFrames( GbaCoreThread coreThread )
+	private void DrainPostedCoreFrames( EmulatorCoreThread coreThread )
 	{
 		bool hasFrame = false;
+		int channels = _profile?.AudioChannels ?? 2;
+		int highWater = (_profile?.AudioSamplesPerFrame ?? GbaAudio.SamplesPerFrame) * AudioHighWaterFrames;
 
 		while ( coreThread.PostedFrames.TryDequeue( out FramePacket frame ) )
 		{
-			if ( _audioStream != null && frame.AudioSamples > 0 && _audioStream.QueuedSampleCount <= GbaAudio.SamplesPerFrame * AudioHighWaterFrames )
-				_audioStream.WriteData( frame.Audio.AsSpan( 0, frame.AudioSamples * 2 ) );
+			if ( _audioStream != null && frame.AudioSamples > 0 && _audioStream.QueuedSampleCount <= highWater )
+				_audioStream.WriteData( frame.Audio.AsSpan( 0, frame.AudioSamples * channels ) );
 
 			coreThread.Sync.ConsumeAudio( frame.AudioSamples );
 
@@ -440,14 +473,20 @@ public sealed partial class EmulatorComponent : Component
 
 	private void UploadPendingVideoFrame()
 	{
-		Gba core = Core;
-		if ( core?.Video?.RenderCommandList == null )
+		IEmulatorCore core = Core;
+		if ( core == null || !_videoFramePending )
 			return;
 
-		if ( !_videoFramePending )
-			return;
+		bool uploaded = false;
+		foreach ( IVideoOutput screen in core.Screens )
+		{
+			if ( screen.RenderCommandList == null )
+				continue;
+			if ( screen.UploadAndBuildCommandList() )
+				uploaded = true;
+		}
 
-		if ( core.Video.UploadAndBuildCommandList() )
+		if ( uploaded )
 			_videoFramePending = false;
 	}
 
@@ -456,38 +495,55 @@ public sealed partial class EmulatorComponent : Component
 		if ( _paused )
 			return;
 
+		InputButton[] buttons = _profile?.Buttons;
+		if ( buttons == null )
+			return;
+
+		float stickX = Input.GetAnalog( InputAnalog.LeftStickX );
+		float stickY = Input.GetAnalog( InputAnalog.LeftStickY );
+
 		if ( _inputCooldown > 0 )
 		{
-			bool anyHeld = Input.Down( "GBA_A" ) || Input.Down( "GBA_B" ) ||
-				Input.Down( "GBA_Start" ) || Input.Down( "GBA_Select" ) ||
-				Input.Down( "GBA_L" ) || Input.Down( "GBA_R" ) ||
-				Input.Down( "GBA_Up" ) || Input.Down( "GBA_Down" ) ||
-				Input.Down( "GBA_Left" ) || Input.Down( "GBA_Right" ) ||
-				MathF.Abs( Input.GetAnalog( InputAnalog.LeftStickX ) ) > StickDeadzone ||
-				MathF.Abs( Input.GetAnalog( InputAnalog.LeftStickY ) ) > StickDeadzone;
-
-			if ( anyHeld )
+			if ( AnyButtonHeld( buttons, stickX, stickY ) )
 				return;
 
 			_inputCooldown = 0;
 		}
 
-		int keys = AllKeysReleased;
-		if ( Input.Down( "GBA_A" ) ) keys &= ~(int)GbaKey.A;
-		if ( Input.Down( "GBA_B" ) ) keys &= ~(int)GbaKey.B;
-		if ( Input.Down( "GBA_Start" ) ) keys &= ~(int)GbaKey.Start;
-		if ( Input.Down( "GBA_Select" ) ) keys &= ~(int)GbaKey.Select;
-		if ( Input.Down( "GBA_L" ) ) keys &= ~(int)GbaKey.L;
-		if ( Input.Down( "GBA_R" ) ) keys &= ~(int)GbaKey.R;
+		ulong mask = 0;
+		for ( int i = 0; i < buttons.Length; i++ )
+		{
+			if ( IsButtonPressed( buttons[i], stickX, stickY ) )
+				mask |= 1UL << i;
+		}
 
-		float stickX = Input.GetAnalog( InputAnalog.LeftStickX );
-		float stickY = Input.GetAnalog( InputAnalog.LeftStickY );
-		if ( Input.Down( "GBA_Up" ) || stickY < -StickDeadzone ) keys &= ~(int)GbaKey.Up;
-		if ( Input.Down( "GBA_Down" ) || stickY > StickDeadzone ) keys &= ~(int)GbaKey.Down;
-		if ( Input.Down( "GBA_Left" ) || stickX < -StickDeadzone ) keys &= ~(int)GbaKey.Left;
-		if ( Input.Down( "GBA_Right" ) || stickX > StickDeadzone ) keys &= ~(int)GbaKey.Right;
+		Interlocked.Exchange( ref _inputKeys, (int)mask );
+	}
 
-		Interlocked.Exchange( ref _inputKeys, keys );
+	private static bool IsButtonPressed( in InputButton button, float stickX, float stickY )
+	{
+		if ( Input.Down( button.ActionName ) )
+			return true;
+
+		return button.Dpad switch
+		{
+			DpadDirection.Up => stickY < -StickDeadzone,
+			DpadDirection.Down => stickY > StickDeadzone,
+			DpadDirection.Left => stickX < -StickDeadzone,
+			DpadDirection.Right => stickX > StickDeadzone,
+			_ => false,
+		};
+	}
+
+	private static bool AnyButtonHeld( InputButton[] buttons, float stickX, float stickY )
+	{
+		for ( int i = 0; i < buttons.Length; i++ )
+		{
+			if ( IsButtonPressed( buttons[i], stickX, stickY ) )
+				return true;
+		}
+
+		return false;
 	}
 
 	public void SetPaused( bool paused )
@@ -495,7 +551,7 @@ public sealed partial class EmulatorComponent : Component
 		_paused = paused;
 
 		if ( paused )
-			Interlocked.Exchange( ref _inputKeys, AllKeysReleased );
+			Interlocked.Exchange( ref _inputKeys, 0 );
 		else
 			_inputCooldown = 2;
 
@@ -522,7 +578,7 @@ public sealed partial class EmulatorComponent : Component
 
 	public void CreateSuspendPoint( int slot )
 	{
-		Gba core = Core;
+		IEmulatorCore core = Core;
 		if ( core == null )
 			return;
 
@@ -535,8 +591,8 @@ public sealed partial class EmulatorComponent : Component
 				if ( Core != core )
 					return;
 
-				byte[] screenshot = core.Video.CaptureScreenshot();
-				data = GbaSerialize.Save( core, screenshot );
+				byte[] screenshot = core.Screens[0].CaptureScreenshot();
+				data = core.SaveState( screenshot );
 			}
 
 			FileSystem.Data.WriteAllBytes( path, data );
@@ -560,7 +616,7 @@ public sealed partial class EmulatorComponent : Component
 			}
 
 			byte[] data = FileSystem.Data.ReadAllBytes( path ).ToArray();
-			GbaSerialize.Load( core, data );
+			core.LoadState( data );
 			GbaLog.Write( LogCategory.GBAState, LogLevel.Info, $"Suspend point loaded from slot {slot}" );
 		} );
 	}
@@ -573,15 +629,17 @@ public sealed partial class EmulatorComponent : Component
 	public void ApplyDisplaySettings()
 	{
 		bool reproduceClassicFeel = GamePreferences.ReproduceClassicFeel;
-		Gba core = Core;
-		if ( core?.Video != null )
+		IEmulatorCore core = Core;
+		if ( core != null && core.Screens.Count > 0 )
 		{
 			lock ( CoreLock )
 			{
-				if ( Core != core || core.Video == null )
+				if ( Core != core || core.Screens.Count == 0 )
 					return;
 
-				core.Video.SetReproduceClassicFeel( reproduceClassicFeel );
+				DisplayOptions display = CurrentDisplayOptions();
+				foreach ( IVideoOutput screen in core.Screens )
+					screen.ApplyDisplayOptions( display );
 			}
 		}
 		_appliedReproduceClassicFeel = reproduceClassicFeel;

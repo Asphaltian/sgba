@@ -1,9 +1,10 @@
 ﻿using System.IO;
 using System.Text;
+using Emulotl;
 
 namespace sGBA;
 
-public class GbaSavedata
+public class GbaSavedata : ISaveData
 {
 	public Gba Gba { get; }
 	public SavedataType Type { get; private set; }
@@ -374,6 +375,8 @@ public class GbaSavedata
 				break;
 		}
 	}
+
+	public bool ConsumeDirty() => Clean();
 
 	public bool Clean()
 	{

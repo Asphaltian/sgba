@@ -12,7 +12,7 @@ public sealed class WirelessAdapterMode : INetMode
 		_net = net;
 	}
 
-	private GbaWirelessAdapter Adapter => _net.Emulator?.Core?.Io?.WirelessAdapter;
+	private GbaWirelessAdapter Adapter => (_net.Emulator?.Core as Gba)?.Io?.WirelessAdapter;
 
 	public void OnPeerJoined( Connection conn )
 	{

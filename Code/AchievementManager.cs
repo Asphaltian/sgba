@@ -1,3 +1,5 @@
+using Emulotl;
+
 namespace sGBA;
 
 public static class AchievementManager
@@ -41,16 +43,24 @@ public static class AchievementManager
 
 	private static bool AllBundledGamesPlayed()
 	{
-		IEnumerable<string> bundled;
-		try { bundled = FileSystem.Mounted.FindFile( "roms", "*.gba" ) ?? []; }
-		catch { return false; }
+		EmulatorSystems.EnsureRegistered();
 
 		bool any = false;
-		foreach ( string fileName in bundled )
+		foreach ( SystemProfile profile in SystemRegistry.All )
 		{
-			any = true;
-			if ( !GamePlayHistory.HasPlayed( $"roms/{fileName}" ) )
-				return false;
+			foreach ( string extension in profile.RomExtensions )
+			{
+				IEnumerable<string> bundled;
+				try { bundled = FileSystem.Mounted.FindFile( "roms", $"*.{extension}" ) ?? []; }
+				catch { continue; }
+
+				foreach ( string fileName in bundled )
+				{
+					any = true;
+					if ( !GamePlayHistory.HasPlayed( $"roms/{fileName}" ) )
+						return false;
+				}
+			}
 		}
 
 		return any;

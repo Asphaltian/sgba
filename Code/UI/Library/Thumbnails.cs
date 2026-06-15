@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Emulotl;
 
 namespace sGBA;
 
@@ -15,14 +16,16 @@ public enum ThumbType
 
 public static class Thumbnails
 {
-	private const string SystemName = "Nintendo - Game Boy Advance";
 	private const string CacheRoot = "thumbnails";
 	private const string BaseUrl = "https://thumbnails.libretro.com/";
 	private static readonly Regex ImageLinkRegex = new( "href=\"([^\"]+\\.png)\"", RegexOptions.IgnoreCase | RegexOptions.Compiled );
-	private static readonly Dictionary<ThumbType, Task<Dictionary<string, string>>> IndexTasks = [];
+	private static readonly Dictionary<string, Task<Dictionary<string, string>>> IndexTasks = [];
 	private static readonly Dictionary<string, Task<string>> ExactPathTasks = [];
 	private static readonly Dictionary<string, Task<string>> FallbackPathTasks = [];
 	private static readonly Dictionary<string, Texture> LoadedTextures = [];
+
+	private static string SystemNameOf( GameEntry game )
+		=> SystemRegistry.ById( game?.SystemId )?.LibretroPlatform ?? GbaSystem.Profile.LibretroPlatform;
 
 	public static async Task<Texture> LoadAsync( GameEntry game, ThumbType type )
 	{
@@ -49,7 +52,7 @@ public static class Thumbnails
 		if ( game is null || string.IsNullOrWhiteSpace( game.NoIntroName ) )
 			return null;
 
-		var cachePath = GetCachePath( type, GetExactFileName( game ) );
+		var cachePath = GetCachePath( SystemNameOf( game ), type, GetExactFileName( game ) );
 		if ( !FileSystem.Data.FileExists( cachePath ) )
 			return null;
 
@@ -83,18 +86,19 @@ public static class Thumbnails
 
 	private static async Task<string> GetExactPathInternalAsync( GameEntry game, ThumbType type )
 	{
+		var systemName = SystemNameOf( game );
 		var fileName = GetExactFileName( game );
-		var cachePath = GetCachePath( type, fileName );
+		var cachePath = GetCachePath( systemName, type, fileName );
 		try
 		{
 			if ( FileSystem.Data.FileExists( cachePath ) )
 				return cachePath;
 
-			var bytes = await Http.RequestBytesAsync( BuildUrl( type, fileName ) );
+			var bytes = await Http.RequestBytesAsync( BuildUrl( systemName, type, fileName ) );
 			if ( !IsPng( bytes ) )
 				return null;
 
-			EnsureCacheDirectory( type );
+			EnsureCacheDirectory( systemName, type );
 			FileSystem.Data.WriteAllBytes( cachePath, bytes );
 			return cachePath;
 		}
@@ -119,18 +123,19 @@ public static class Thumbnails
 	{
 		try
 		{
+			var systemName = SystemNameOf( game );
 			var fileName = await FindIndexedFileNameAsync( game, type );
 			if ( string.IsNullOrWhiteSpace( fileName ) )
 				return null;
 
-			var cachePath = GetCachePath( type, fileName );
+			var cachePath = GetCachePath( systemName, type, fileName );
 			if ( !FileSystem.Data.FileExists( cachePath ) )
 			{
-				var bytes = await Http.RequestBytesAsync( BuildUrl( type, fileName ) );
+				var bytes = await Http.RequestBytesAsync( BuildUrl( systemName, type, fileName ) );
 				if ( !IsPng( bytes ) )
 					return null;
 
-				EnsureCacheDirectory( type );
+				EnsureCacheDirectory( systemName, type );
 				FileSystem.Data.WriteAllBytes( cachePath, bytes );
 			}
 
@@ -166,7 +171,7 @@ public static class Thumbnails
 
 	private static async Task<string> FindIndexedFileNameAsync( GameEntry game, ThumbType type )
 	{
-		var index = await GetIndexAsync( type );
+		var index = await GetIndexAsync( SystemNameOf( game ), type );
 		if ( index.Count == 0 )
 			return null;
 
@@ -181,20 +186,21 @@ public static class Thumbnails
 			.FirstOrDefault();
 	}
 
-	private static Task<Dictionary<string, string>> GetIndexAsync( ThumbType type )
+	private static Task<Dictionary<string, string>> GetIndexAsync( string systemName, ThumbType type )
 	{
-		if ( IndexTasks.TryGetValue( type, out var task ) )
+		var key = $"{systemName}:{type}";
+		if ( IndexTasks.TryGetValue( key, out var task ) )
 			return task;
 
-		task = LoadIndexAsync( type );
-		IndexTasks[type] = task;
+		task = LoadIndexAsync( systemName, type );
+		IndexTasks[key] = task;
 		return task;
 	}
 
-	private static async Task<Dictionary<string, string>> LoadIndexAsync( ThumbType type )
+	private static async Task<Dictionary<string, string>> LoadIndexAsync( string systemName, ThumbType type )
 	{
 		var map = new Dictionary<string, string>( StringComparer.OrdinalIgnoreCase );
-		var html = await Http.RequestStringAsync( BuildDirectoryUrl( type ) );
+		var html = await Http.RequestStringAsync( BuildDirectoryUrl( systemName, type ) );
 
 		foreach ( Match match in ImageLinkRegex.Matches( html ) )
 		{
@@ -212,14 +218,14 @@ public static class Thumbnails
 		return map;
 	}
 
-	private static string BuildDirectoryUrl( ThumbType type )
+	private static string BuildDirectoryUrl( string systemName, ThumbType type )
 	{
-		return BaseUrl + Uri.EscapeDataString( SystemName ) + "/" + GetDirectoryName( type ) + "/";
+		return BaseUrl + Uri.EscapeDataString( systemName ) + "/" + GetDirectoryName( type ) + "/";
 	}
 
-	private static string BuildUrl( ThumbType type, string fileName )
+	private static string BuildUrl( string systemName, ThumbType type, string fileName )
 	{
-		return BuildDirectoryUrl( type ) + Uri.EscapeDataString( fileName );
+		return BuildDirectoryUrl( systemName, type ) + Uri.EscapeDataString( fileName );
 	}
 
 	private static string GetExactFileName( GameEntry game )
@@ -227,17 +233,17 @@ public static class Thumbnails
 		return game.NoIntroName + ".png";
 	}
 
-	private static string GetCachePath( ThumbType type, string fileName )
+	private static string GetCachePath( string systemName, ThumbType type, string fileName )
 	{
-		return $"{CacheRoot}/{SystemName}/{GetDirectoryName( type )}/{fileName}";
+		return $"{CacheRoot}/{systemName}/{GetDirectoryName( type )}/{fileName}";
 	}
 
-	private static void EnsureCacheDirectory( ThumbType type )
+	private static void EnsureCacheDirectory( string systemName, ThumbType type )
 	{
 		if ( !FileSystem.Data.DirectoryExists( CacheRoot ) )
 			FileSystem.Data.CreateDirectory( CacheRoot );
 
-		var systemPath = $"{CacheRoot}/{SystemName}";
+		var systemPath = $"{CacheRoot}/{systemName}";
 		if ( !FileSystem.Data.DirectoryExists( systemPath ) )
 			FileSystem.Data.CreateDirectory( systemPath );
 

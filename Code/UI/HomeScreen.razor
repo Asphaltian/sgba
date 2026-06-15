@@ -778,7 +778,7 @@
 		if (nav.Left) { SetGamepadMode(); NavigateLeft(); }
 		if (nav.Right) { SetGamepadMode(); NavigateRight(); }
 
-		if (Input.Pressed("GBA_A") || Input.Pressed("GBA_Start"))
+		if (Input.Pressed("UI_Accept") || Input.Pressed("UI_Start"))
 		{
 			SetGamepadMode();
 			if (_allSoftwareOpen) ActivateAllSoftwareItem(_allSoftwareSelection);
@@ -786,20 +786,20 @@
 			else ActivateCarouselItem(_selectedIndex);
 		}
 
-		if (Input.Pressed("GBA_B") && _allSoftwareOpen)
+		if (Input.Pressed("UI_Back") && _allSoftwareOpen)
 		{
 			SetGamepadMode();
 			CloseAllSoftware();
 		}
 
-		if (Input.Pressed("GBA_B") && _navFocused)
+		if (Input.Pressed("UI_Back") && _navFocused)
 		{
 			SetGamepadMode();
 			_navFocused = false;
 			Sound.Play("ui.button.over");
 		}
 
-		if (Input.Pressed("GBA_Select") && CanOpenDetails)
+		if (Input.Pressed("UI_Details") && CanOpenDetails)
 		{
 			SetGamepadMode();
 			OpenSelectedDetails();

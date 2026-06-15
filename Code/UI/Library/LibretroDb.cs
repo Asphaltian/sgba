@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Emulotl;
 
 namespace sGBA;
 
@@ -20,33 +21,41 @@ public sealed record GameInfo(
 internal sealed class LibretroDb
 {
 	private const string BaseUrl = "https://raw.githubusercontent.com/libretro/libretro-database/master/metadat/";
-	private const string PlatformFileName = "Nintendo%20-%20Game%20Boy%20Advance.dat";
-	private const string PlatformCacheFileName = "Nintendo - Game Boy Advance.dat";
 	private const string CacheRoot = "database";
 	private const string CacheDirectory = "database/metadat";
 
 	private static readonly Dictionary<string, Task<FieldIndex>> FieldTasks = [];
 	private static readonly Dictionary<string, Task<GameInfo>> LookupTasks = [];
-	private static Task<NoIntroIndex> NoIntroTask;
+	private static readonly Dictionary<string, Task<NoIntroIndex>> NoIntroTasks = [];
 
 	public static async Task WarmAsync()
 	{
-		var tasks = new List<Task>
+		EmulatorSystems.EnsureRegistered();
+
+		var tasks = new List<Task>();
+		foreach ( SystemProfile profile in SystemRegistry.All )
 		{
-			GetNoIntroAsync(),
-			GetFieldIndexAsync( "developer", "developer", true ),
-			GetFieldIndexAsync( "publisher", "publisher", true ),
-			GetFieldIndexAsync( "releaseyear", "releaseyear", true ),
-			GetFieldIndexAsync( "releasemonth", "releasemonth", true ),
-			GetFieldIndexAsync( "genre", "genre", true ),
-			GetFieldIndexAsync( "franchise", "franchise", true ),
-			GetFieldIndexAsync( "esrb", "esrb_rating", true ),
-			GetFieldIndexAsync( "maxusers", "users", false )
-		};
+			string platform = profile.LibretroPlatform;
+			if ( string.IsNullOrWhiteSpace( platform ) )
+				continue;
+
+			tasks.Add( GetNoIntroAsync( platform ) );
+			tasks.Add( GetFieldIndexAsync( platform, "developer", "developer", true ) );
+			tasks.Add( GetFieldIndexAsync( platform, "publisher", "publisher", true ) );
+			tasks.Add( GetFieldIndexAsync( platform, "releaseyear", "releaseyear", true ) );
+			tasks.Add( GetFieldIndexAsync( platform, "releasemonth", "releasemonth", true ) );
+			tasks.Add( GetFieldIndexAsync( platform, "genre", "genre", true ) );
+			tasks.Add( GetFieldIndexAsync( platform, "franchise", "franchise", true ) );
+			tasks.Add( GetFieldIndexAsync( platform, "esrb", "esrb_rating", true ) );
+			tasks.Add( GetFieldIndexAsync( platform, "maxusers", "users", false ) );
+		}
 
 		foreach ( var task in tasks )
 			await task;
 	}
+
+	private static string PlatformOf( GameEntry game )
+		=> SystemRegistry.ById( game?.SystemId )?.LibretroPlatform ?? GbaSystem.Profile.LibretroPlatform;
 
 	public static Task<GameInfo> FetchAsync( GameEntry game, GameHashes hashes = null )
 	{
@@ -63,18 +72,19 @@ internal sealed class LibretroDb
 
 	private static async Task<GameInfo> FetchInternalAsync( GameEntry game, GameHashes hashes )
 	{
+		string platform = PlatformOf( game );
 		var crc = NormalizeCrc( hashes?.Crc );
 
-		var noIntro = await GetNoIntroAsync();
+		var noIntro = await GetNoIntroAsync( platform );
 		var noIntroEntry = FindNoIntroEntry( noIntro, game, crc );
-		var developerTask = GetValueAsync( "developer", "developer", true, game, noIntroEntry, crc );
-		var publisherTask = GetValueAsync( "publisher", "publisher", true, game, noIntroEntry, crc );
-		var releaseYearTask = GetValueAsync( "releaseyear", "releaseyear", true, game, noIntroEntry, crc );
-		var releaseMonthTask = GetValueAsync( "releasemonth", "releasemonth", true, game, noIntroEntry, crc );
-		var genreTask = GetValueAsync( "genre", "genre", true, game, noIntroEntry, crc );
-		var franchiseTask = GetValueAsync( "franchise", "franchise", true, game, noIntroEntry, crc );
-		var esrbTask = GetValueAsync( "esrb", "esrb_rating", true, game, noIntroEntry, crc );
-		var maxUsersTask = GetValueAsync( "maxusers", "users", false, game, noIntroEntry, crc );
+		var developerTask = GetValueAsync( platform, "developer", "developer", true, game, noIntroEntry, crc );
+		var publisherTask = GetValueAsync( platform, "publisher", "publisher", true, game, noIntroEntry, crc );
+		var releaseYearTask = GetValueAsync( platform, "releaseyear", "releaseyear", true, game, noIntroEntry, crc );
+		var releaseMonthTask = GetValueAsync( platform, "releasemonth", "releasemonth", true, game, noIntroEntry, crc );
+		var genreTask = GetValueAsync( platform, "genre", "genre", true, game, noIntroEntry, crc );
+		var franchiseTask = GetValueAsync( platform, "franchise", "franchise", true, game, noIntroEntry, crc );
+		var esrbTask = GetValueAsync( platform, "esrb", "esrb_rating", true, game, noIntroEntry, crc );
+		var maxUsersTask = GetValueAsync( platform, "maxusers", "users", false, game, noIntroEntry, crc );
 
 		await developerTask;
 		await publisherTask;
@@ -100,9 +110,9 @@ internal sealed class LibretroDb
 		);
 	}
 
-	private static async Task<string> GetValueAsync( string folder, string propertyName, bool quoted, GameEntry game, NoIntroEntry noIntroEntry, string crc )
+	private static async Task<string> GetValueAsync( string platform, string folder, string propertyName, bool quoted, GameEntry game, NoIntroEntry noIntroEntry, string crc )
 	{
-		var index = await GetFieldIndexAsync( folder, propertyName, quoted );
+		var index = await GetFieldIndexAsync( platform, folder, propertyName, quoted );
 
 		if ( !string.IsNullOrWhiteSpace( crc ) && index.ByCrc.TryGetValue( crc, out var value ) )
 			return value;
@@ -117,22 +127,22 @@ internal sealed class LibretroDb
 		return string.Empty;
 	}
 
-	private static Task<FieldIndex> GetFieldIndexAsync( string folder, string propertyName, bool quoted )
+	private static Task<FieldIndex> GetFieldIndexAsync( string platform, string folder, string propertyName, bool quoted )
 	{
-		var key = $"{folder}:{propertyName}";
+		var key = $"{platform}:{folder}:{propertyName}";
 		if ( FieldTasks.TryGetValue( key, out var task ) )
 			return task;
 
-		task = LoadFieldIndexAsync( folder, propertyName, quoted );
+		task = LoadFieldIndexAsync( platform, folder, propertyName, quoted );
 		FieldTasks[key] = task;
 		return task;
 	}
 
-	private static async Task<FieldIndex> LoadFieldIndexAsync( string folder, string propertyName, bool quoted )
+	private static async Task<FieldIndex> LoadFieldIndexAsync( string platform, string folder, string propertyName, bool quoted )
 	{
 		try
 		{
-			var text = await LoadDatAsync( folder );
+			var text = await LoadDatAsync( folder, platform );
 			return ParseFieldIndex( text, propertyName, quoted );
 		}
 		catch ( Exception ex )
@@ -142,17 +152,21 @@ internal sealed class LibretroDb
 		}
 	}
 
-	private static Task<NoIntroIndex> GetNoIntroAsync()
+	private static Task<NoIntroIndex> GetNoIntroAsync( string platform )
 	{
-		NoIntroTask ??= LoadNoIntroAsync();
-		return NoIntroTask;
+		if ( NoIntroTasks.TryGetValue( platform, out var task ) )
+			return task;
+
+		task = LoadNoIntroAsync( platform );
+		NoIntroTasks[platform] = task;
+		return task;
 	}
 
-	private static async Task<NoIntroIndex> LoadNoIntroAsync()
+	private static async Task<NoIntroIndex> LoadNoIntroAsync( string platform )
 	{
 		try
 		{
-			var text = await LoadDatAsync( "no-intro" );
+			var text = await LoadDatAsync( "no-intro", platform );
 			return ParseNoIntroIndex( text );
 		}
 		catch ( Exception ex )
@@ -162,9 +176,11 @@ internal sealed class LibretroDb
 		}
 	}
 
-	private static async Task<string> LoadDatAsync( string folder )
+	private static async Task<string> LoadDatAsync( string folder, string platform )
 	{
-		var cachePath = $"{CacheDirectory}/{folder}/{PlatformCacheFileName}";
+		var cacheFileName = platform + ".dat";
+		var urlFileName = Uri.EscapeDataString( platform ) + ".dat";
+		var cachePath = $"{CacheDirectory}/{folder}/{cacheFileName}";
 		try
 		{
 			if ( FileSystem.Data.FileExists( cachePath ) )
@@ -172,7 +188,7 @@ internal sealed class LibretroDb
 		}
 		catch { }
 
-		var text = await Http.RequestStringAsync( BaseUrl + folder + "/" + PlatformFileName );
+		var text = await Http.RequestStringAsync( BaseUrl + folder + "/" + urlFileName );
 		try
 		{
 			if ( !FileSystem.Data.DirectoryExists( CacheRoot ) )

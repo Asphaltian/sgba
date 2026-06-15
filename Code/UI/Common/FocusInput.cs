@@ -76,10 +76,10 @@ public sealed class FocusInput
 	}
 
 	public NavTriggers TickRepeating(
-		string upAction = "GBA_Up",
-		string downAction = "GBA_Down",
-		string leftAction = "GBA_Left",
-		string rightAction = "GBA_Right",
+		string upAction = "UI_Up",
+		string downAction = "UI_Down",
+		string leftAction = "UI_Left",
+		string rightAction = "UI_Right",
 		float repeatDelay = DefaultRepeatDelay,
 		float repeatRate = DefaultRepeatRate )
 	{

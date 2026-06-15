@@ -1,8 +1,15 @@
+using Emulotl;
+
 namespace sGBA;
 
-public partial class GbaVideo
+public partial class GbaVideo : IVideoOutput
 {
 	public Gba Gba { get; }
+
+	int IVideoOutput.Width => GbaConstants.ScreenWidth;
+	int IVideoOutput.Height => GbaConstants.ScreenHeight;
+
+	public void ApplyDisplayOptions( in DisplayOptions options ) => SetReproduceClassicFeel( options.ReproduceClassicFeel );
 
 	public int VCount;
 	public int Dot;
