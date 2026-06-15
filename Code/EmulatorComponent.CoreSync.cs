@@ -1,7 +1,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace sGBA;
+namespace Emulotl;
 
 public sealed partial class EmulatorComponent
 {

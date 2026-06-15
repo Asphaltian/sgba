@@ -1,13 +1,12 @@
 using System.Diagnostics;
 using System.Threading;
 using Sandbox.Rendering;
-using Emulotl;
 
-namespace sGBA;
+namespace Emulotl;
 
 public sealed partial class EmulatorComponent : Component
 {
-	[Property, Title( "ROM Path" ), FilePath( Extension = "gba" )]
+	[Property, Title( "ROM Path" )]
 	public string RomPath { get; set; }
 
 	public string GameCode { get; private set; }
@@ -50,7 +49,7 @@ public sealed partial class EmulatorComponent : Component
 	{
 		Current = this;
 		EmulatorSystems.EnsureRegistered();
-		GbaLog.SetBackend( LogBackend );
+		EmuLog.SetBackend( LogBackend );
 		_camera = Scene.Camera;
 		if ( !string.IsNullOrEmpty( RomPath ) )
 			_initCoreOnUpdate = true;
@@ -135,14 +134,14 @@ public sealed partial class EmulatorComponent : Component
 			if ( !FileSystem.Mounted.FileExists( RomPath ) && !FileSystem.Data.FileExists( RomPath ) )
 			{
 				ErrorMessage = $"ROM not found: {RomPath}";
-				GbaLog.Write( LogCategory.GBA, LogLevel.Error, ErrorMessage );
+				EmuLog.Write( LogCategory.Core, LogLevel.Error, ErrorMessage );
 				return;
 			}
 
 			if ( !EnsureProfile() )
 			{
 				ErrorMessage = $"No emulator system handles ROM: {RomPath}";
-				GbaLog.Write( LogCategory.GBA, LogLevel.Error, ErrorMessage );
+				EmuLog.Write( LogCategory.Core, LogLevel.Error, ErrorMessage );
 				return;
 			}
 
@@ -151,11 +150,11 @@ public sealed partial class EmulatorComponent : Component
 			if ( romData.Length < 192 )
 			{
 				ErrorMessage = $"ROM file is too small to be a valid {_profile.DisplayName} ROM.";
-				GbaLog.Write( LogCategory.GBA, LogLevel.Error, ErrorMessage );
+				EmuLog.Write( LogCategory.Core, LogLevel.Error, ErrorMessage );
 				return;
 			}
 
-			GameCode = _profile.ReadGameId( romData );
+			GameCode = _profile.ReadGameCode( romData );
 
 			IEmulatorCore core = _profile.CreateCore();
 			core.LoadRom( romData );
@@ -184,7 +183,7 @@ public sealed partial class EmulatorComponent : Component
 			_stateBasePath = "states/" + System.IO.Path.GetFileNameWithoutExtension( RomPath );
 
 			try { InitAudioStream(); }
-			catch ( Exception audioEx ) { GbaLog.Write( LogCategory.GBAAudio, LogLevel.Warn, $"Audio init failed: {audioEx.Message}" ); }
+			catch ( Exception audioEx ) { EmuLog.Write( LogCategory.Audio, LogLevel.Warn, $"Audio init failed: {audioEx.Message}" ); }
 
 			_coreThread = new EmulatorCoreThread( core, CoreLock, ReadInputKeysActive, LogCoreThreadError, LogCoreThreadReset );
 			_coreThread.Sync.LoadCoreOptions( audioSync: true, videoSync: true, fpsTarget: (float)_profile.NativeFps );
@@ -199,7 +198,7 @@ public sealed partial class EmulatorComponent : Component
 		catch ( Exception ex )
 		{
 			ErrorMessage = $"Failed to load ROM: {ex.Message}";
-			GbaLog.Write( LogCategory.GBA, LogLevel.Fatal, ErrorMessage );
+			EmuLog.Write( LogCategory.Core, LogLevel.Fatal, ErrorMessage );
 		}
 	}
 
@@ -213,9 +212,12 @@ public sealed partial class EmulatorComponent : Component
 			_audioStream = null;
 		}
 
-		int sampleRate = _profile?.AudioSampleRate ?? GbaAudio.SampleRate;
-		int channels = _profile?.AudioChannels ?? 2;
-		int samplesPerFrame = _profile?.AudioSamplesPerFrame ?? GbaAudio.SamplesPerFrame;
+		if ( _profile == null )
+			return;
+
+		int sampleRate = _profile.AudioSampleRate;
+		int channels = _profile.AudioChannels;
+		int samplesPerFrame = _profile.AudioSamplesPerFrame;
 
 		_audioStream = new SoundStream( sampleRate, channels );
 		_audioStream.WriteData( new short[samplesPerFrame * channels * AudioPrefillFrames] );
@@ -452,7 +454,7 @@ public sealed partial class EmulatorComponent : Component
 	{
 		bool hasFrame = false;
 		int channels = _profile?.AudioChannels ?? 2;
-		int highWater = (_profile?.AudioSamplesPerFrame ?? GbaAudio.SamplesPerFrame) * AudioHighWaterFrames;
+		int highWater = (_profile?.AudioSamplesPerFrame ?? 0) * AudioHighWaterFrames;
 
 		while ( coreThread.PostedFrames.TryDequeue( out FramePacket frame ) )
 		{
@@ -596,11 +598,11 @@ public sealed partial class EmulatorComponent : Component
 			}
 
 			FileSystem.Data.WriteAllBytes( path, data );
-			GbaLog.Write( LogCategory.GBAState, LogLevel.Info, $"Suspend point created in slot {slot}" );
+			EmuLog.Write( LogCategory.State, LogLevel.Info, $"Suspend point created in slot {slot}" );
 		}
 		catch ( Exception ex )
 		{
-			GbaLog.Write( LogCategory.GBAState, LogLevel.Error, $"Failed to create suspend point {slot}: {ex.Message}" );
+			EmuLog.Write( LogCategory.State, LogLevel.Error, $"Failed to create suspend point {slot}: {ex.Message}" );
 		}
 	}
 
@@ -611,13 +613,13 @@ public sealed partial class EmulatorComponent : Component
 		{
 			if ( !FileSystem.Data.FileExists( path ) )
 			{
-				GbaLog.Write( LogCategory.GBAState, LogLevel.Warn, $"No suspend point in slot {slot}" );
+				EmuLog.Write( LogCategory.State, LogLevel.Warn, $"No suspend point in slot {slot}" );
 				return;
 			}
 
 			byte[] data = FileSystem.Data.ReadAllBytes( path ).ToArray();
 			core.LoadState( data );
-			GbaLog.Write( LogCategory.GBAState, LogLevel.Info, $"Suspend point loaded from slot {slot}" );
+			EmuLog.Write( LogCategory.State, LogLevel.Info, $"Suspend point loaded from slot {slot}" );
 		} );
 	}
 
@@ -657,17 +659,17 @@ public sealed partial class EmulatorComponent : Component
 
 	private void LogCoreThreadError( string message )
 	{
-		GbaLog.Write( LogCategory.GBA, LogLevel.Fatal, message );
+		EmuLog.Write( LogCategory.Core, LogLevel.Fatal, message );
 	}
 
 	private void LogCoreThreadReset()
 	{
-		GbaLog.Write( LogCategory.GBA, LogLevel.Info, "Emulator reset" );
+		EmuLog.Write( LogCategory.Core, LogLevel.Info, "Emulator reset" );
 	}
 
 	private static void LogBackend( LogCategory category, LogLevel level, string message )
 	{
-		string formatted = $"{GbaLog.GetCategoryName( category )}: {message}";
+		string formatted = $"{EmuLog.GetCategoryName( category )}: {message}";
 
 		if ( (level & (LogLevel.Fatal | LogLevel.Error)) != 0 )
 			Log.Error( formatted );

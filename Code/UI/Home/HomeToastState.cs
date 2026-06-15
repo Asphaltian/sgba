@@ -1,4 +1,4 @@
-namespace sGBA;
+namespace Emulotl;
 
 internal sealed class HomeToastState
 {

@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using Sandbox.Utility;
 
-namespace sGBA;
+namespace Emulotl;
 
 public sealed record GameHashes( string Md5, string Sha1, long Size, string Crc = "" );
 
@@ -32,7 +32,7 @@ internal static class GameHasher
 		}
 		catch ( Exception ex )
 		{
-			Log.Warning( $"[sGBA] Failed to hash {game.DisplayTitle}: {ex.Message}" );
+			Log.Warning( $"[Emulotl] Failed to hash {game.DisplayTitle}: {ex.Message}" );
 			return new GameHashes( string.Empty, string.Empty, 0 );
 		}
 	}

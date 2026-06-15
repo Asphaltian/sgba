@@ -1,7 +1,6 @@
-@using Sandbox.UI
 @using System.Threading.Tasks
 
-@namespace sGBA
+@namespace Emulotl
 
 @inherits PanelComponent
 
@@ -189,7 +188,7 @@
 		}
 		catch (Exception ex)
 		{
-			Log.Warning($"[sGBA] Failed to load Libretro metadata for {game.DisplayTitle}: {ex.Message}");
+			Log.Warning($"[Emulotl] Failed to load Libretro metadata for {game.DisplayTitle}: {ex.Message}");
 		}
 	}
 

@@ -1,6 +1,4 @@
-using Emulotl;
-
-namespace sGBA;
+namespace Emulotl;
 
 public static class AchievementManager
 {

@@ -1,6 +1,5 @@
-using Emulotl;
-
-namespace sGBA;
+using Emulotl.Gba;
+namespace Emulotl;
 
 public static class EmulatorSystems
 {

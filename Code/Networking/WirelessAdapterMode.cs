@@ -1,4 +1,6 @@
-namespace sGBA;
+using GbaCore = Emulotl.Gba.Gba;
+using Emulotl.Gba;
+namespace Emulotl;
 
 public sealed class WirelessAdapterMode : INetMode
 {
@@ -12,7 +14,7 @@ public sealed class WirelessAdapterMode : INetMode
 		_net = net;
 	}
 
-	private GbaWirelessAdapter Adapter => (_net.Emulator?.Core as Gba)?.Io?.WirelessAdapter;
+	private GbaWirelessAdapter Adapter => (_net.Emulator?.Core as GbaCore)?.Io?.WirelessAdapter;
 
 	public void OnPeerJoined( Connection conn )
 	{

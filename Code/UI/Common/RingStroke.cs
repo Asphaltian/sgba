@@ -1,6 +1,6 @@
 using Sandbox.UI;
 
-namespace sGBA;
+namespace Emulotl;
 
 internal readonly struct RingGradient
 {

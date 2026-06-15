@@ -1,6 +1,4 @@
-using Emulotl;
-
-namespace sGBA;
+namespace Emulotl;
 
 public sealed class GameEntry( string path, string displayTitle, string region,
 	string gameCode, string noIntroName, BaseFileSystem fileSystem, string systemId )
@@ -105,7 +103,7 @@ public sealed class GameEntry( string path, string displayTitle, string region,
 			byte[] header = new byte[headerLength];
 			stream.ReadExactly( header, 0, headerLength );
 
-			return profile.ReadGameId( header ) ?? string.Empty;
+			return profile.ReadGameCode( header ) ?? string.Empty;
 		}
 		catch
 		{

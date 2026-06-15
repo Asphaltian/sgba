@@ -145,7 +145,7 @@
           "OwnerTransfer": 1,
           "Components": [
             {
-              "__type": "sGBA.InputHints",
+              "__type": "Emulotl.InputHints",
               "__guid": "bdcdeaa7-127e-456c-833f-6466873ca01a",
               "__enabled": true,
               "Flags": 0,
@@ -176,7 +176,7 @@
           "OwnerTransfer": 1,
           "Components": [
             {
-              "__type": "sGBA.HomeScreen",
+              "__type": "Emulotl.HomeScreen",
               "__guid": "e4109d12-6804-46ae-a8d7-9e7eb8dd2573",
               "__enabled": true,
               "Flags": 0,
@@ -207,7 +207,7 @@
           "OwnerTransfer": 1,
           "Components": [
             {
-              "__type": "sGBA.DetailsModal",
+              "__type": "Emulotl.DetailsModal",
               "__guid": "ee4a959a-34bc-49e5-bfa3-c80ef7196975",
               "__enabled": true,
               "Flags": 0,
@@ -238,7 +238,7 @@
           "OwnerTransfer": 1,
           "Components": [
             {
-              "__type": "sGBA.AddGamesModal",
+              "__type": "Emulotl.AddGamesModal",
               "__guid": "ed272e7b-57dd-4772-8346-3a9e22d8ec00",
               "__enabled": true,
               "Flags": 0,
@@ -269,7 +269,7 @@
           "OwnerTransfer": 1,
           "Components": [
             {
-              "__type": "sGBA.SettingsModal",
+              "__type": "Emulotl.SettingsModal",
               "__guid": "47024fee-2b96-45ee-9934-01c8db33fb89",
               "__enabled": true,
               "Flags": 0,
@@ -300,7 +300,7 @@
           "OwnerTransfer": 1,
           "Components": [
             {
-              "__type": "sGBA.PauseMenu",
+              "__type": "Emulotl.PauseMenu",
               "__guid": "cd8cbe56-7103-4c11-a00f-31a13ab0cc8e",
               "__enabled": true,
               "Flags": 0,
@@ -331,7 +331,7 @@
           "OwnerTransfer": 1,
           "Components": [
             {
-              "__type": "sGBA.GameScreen",
+              "__type": "Emulotl.GameScreen",
               "__guid": "11f2aa7b-594f-4ed9-a21f-87b807425dc4",
               "__enabled": true,
               "Flags": 0,
@@ -362,7 +362,7 @@
           "OwnerTransfer": 1,
           "Components": [
             {
-              "__type": "sGBA.PlayersList",
+              "__type": "Emulotl.PlayersList",
               "__guid": "7d4e1a98-2b5c-4f3a-8e6d-1c9b0a3f2e84",
               "__enabled": true,
               "Flags": 0,
@@ -395,7 +395,7 @@
       "OwnerTransfer": 1,
       "Components": [
         {
-          "__type": "sGBA.EmulatorComponent",
+          "__type": "Emulotl.EmulatorComponent",
           "__guid": "83b16ea3-5c9e-4231-a590-8072fa56ec0d",
           "__enabled": true,
           "Flags": 0,
@@ -427,7 +427,7 @@
       "OwnerTransfer": 1,
       "Components": [
         {
-          "__type": "sGBA.NetworkManager",
+          "__type": "Emulotl.NetworkManager",
           "__guid": "212195a1-3444-4b48-8dd4-80e565eeb3d4",
           "__enabled": true,
           "Flags": 0,

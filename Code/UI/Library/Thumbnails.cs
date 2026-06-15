@@ -1,10 +1,10 @@
+using Emulotl.Gba;
 using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using Emulotl;
 
-namespace sGBA;
+namespace Emulotl;
 
 public enum ThumbType
 {
@@ -143,7 +143,7 @@ public static class Thumbnails
 		}
 		catch ( Exception ex )
 		{
-			Log.Warning( $"[sGBA] {type} thumbnail failed for {game.DisplayTitle}: {ex.Message}" );
+			Log.Warning( $"[Emulotl] {type} thumbnail failed for {game.DisplayTitle}: {ex.Message}" );
 			return null;
 		}
 	}
@@ -164,7 +164,7 @@ public static class Thumbnails
 		}
 		catch ( Exception ex )
 		{
-			Log.Warning( $"[sGBA] {type} texture load failed for {game.DisplayTitle}: {ex.Message}" );
+			Log.Warning( $"[Emulotl] {type} texture load failed for {game.DisplayTitle}: {ex.Message}" );
 			return null;
 		}
 	}

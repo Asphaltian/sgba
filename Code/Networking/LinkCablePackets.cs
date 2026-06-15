@@ -1,7 +1,7 @@
 using System.IO;
 using System.IO.Compression;
 
-namespace sGBA;
+namespace Emulotl;
 
 public enum LinkCablePacketType : byte
 {

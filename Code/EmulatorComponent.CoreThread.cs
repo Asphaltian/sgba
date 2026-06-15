@@ -1,9 +1,8 @@
 using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
-using Emulotl;
 
-namespace sGBA;
+namespace Emulotl;
 
 public sealed partial class EmulatorComponent
 {
@@ -278,7 +277,7 @@ public sealed partial class EmulatorComponent
 				}
 				catch ( Exception ex )
 				{
-					GbaLog.Write( LogCategory.GBA, LogLevel.Error, ex.Message );
+					EmuLog.Write( LogCategory.Core, LogLevel.Error, ex.Message );
 				}
 			}
 		}

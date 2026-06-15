@@ -1,4 +1,4 @@
-namespace sGBA;
+namespace Emulotl;
 
 public sealed class SessionRoster
 {
@@ -222,7 +222,7 @@ public sealed class SessionRoster
 		}
 		catch ( Exception e )
 		{
-			Log.Warning( $"[sGBA] roster parse failed: {e.Message}" );
+			Log.Warning( $"[Emulotl] roster parse failed: {e.Message}" );
 		}
 	}
 

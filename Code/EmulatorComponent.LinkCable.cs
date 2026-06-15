@@ -1,6 +1,8 @@
+using GbaCore = Emulotl.Gba.Gba;
+using Emulotl.Gba;
 using Sandbox.Rendering;
 
-namespace sGBA;
+namespace Emulotl;
 
 public sealed partial class EmulatorComponent
 {
@@ -41,7 +43,7 @@ public sealed partial class EmulatorComponent
 		EmulatorCoreThread soloThread = _coreThread;
 		_coreThread = null;
 		soloThread?.End();
-		Gba soloCore = soloThread?.Core as Gba;
+		GbaCore soloCore = soloThread?.Core as GbaCore;
 
 		_linkSession = new LinkCableSession();
 
@@ -55,7 +57,7 @@ public sealed partial class EmulatorComponent
 		_audioStream?.Dispose();
 		_audioStream = null;
 
-		Gba core0 = soloCore ?? CreateLinkedCore( romData, hostSave, ComputeAutoScale(), localDisplay: true );
+		GbaCore core0 = soloCore ?? CreateLinkedCore( romData, hostSave, ComputeAutoScale(), localDisplay: true );
 
 		var inst0 = _linkSession.Attach( core0, 0 );
 		_linkInstances.Add( inst0 );
@@ -77,7 +79,7 @@ public sealed partial class EmulatorComponent
 		_stateBasePath = "states/" + System.IO.Path.GetFileNameWithoutExtension( RomPath );
 
 		try { InitAudioStream(); }
-		catch ( Exception audioEx ) { GbaLog.Write( LogCategory.GBAAudio, LogLevel.Warn, $"Audio init failed: {audioEx.Message}" ); }
+		catch ( Exception audioEx ) { EmuLog.Write( LogCategory.Audio, LogLevel.Warn, $"Audio init failed: {audioEx.Message}" ); }
 
 		ResetVideoClock();
 		_inputCooldown = 2;
@@ -132,7 +134,7 @@ public sealed partial class EmulatorComponent
 		_timeSinceClientPacket = 0;
 
 		try { InitAudioStream(); }
-		catch ( Exception audioEx ) { GbaLog.Write( LogCategory.GBAAudio, LogLevel.Warn, $"Audio init failed: {audioEx.Message}" ); }
+		catch ( Exception audioEx ) { EmuLog.Write( LogCategory.Audio, LogLevel.Warn, $"Audio init failed: {audioEx.Message}" ); }
 
 		_linkedClient = true;
 		IsReady = true;
@@ -211,7 +213,7 @@ public sealed partial class EmulatorComponent
 			}
 			catch ( Exception e )
 			{
-				GbaLog.Write( LogCategory.GBAState, LogLevel.Warn, $"Failed to capture host slot0 state: {e.Message}" );
+				EmuLog.Write( LogCategory.State, LogLevel.Warn, $"Failed to capture host slot0 state: {e.Message}" );
 				return null;
 			}
 		}
@@ -235,7 +237,7 @@ public sealed partial class EmulatorComponent
 					_videoFramePending = true;
 				}
 			}
-			catch ( Exception e ) { GbaLog.Write( LogCategory.GBAState, LogLevel.Error, $"Failed to load streamed state: {e.Message}" ); }
+			catch ( Exception e ) { EmuLog.Write( LogCategory.State, LogLevel.Error, $"Failed to load streamed state: {e.Message}" ); }
 		} );
 	}
 
@@ -343,9 +345,9 @@ public sealed partial class EmulatorComponent
 		return false;
 	}
 
-	private Gba CreateLinkedCore( byte[] romData, byte[] saveData, int scale, bool localDisplay )
+	private GbaCore CreateLinkedCore( byte[] romData, byte[] saveData, int scale, bool localDisplay )
 	{
-		var core = new Gba();
+		var core = new GbaCore();
 		core.LoadRom( romData );
 		if ( saveData != null )
 			core.Savedata.Load( saveData );
@@ -362,7 +364,7 @@ public sealed partial class EmulatorComponent
 
 	private void CreateHostInstance( int slot, byte[] romData )
 	{
-		Gba core = CreateLinkedCore( romData, null, scale: 1, localDisplay: false );
+		GbaCore core = CreateLinkedCore( romData, null, scale: 1, localDisplay: false );
 		var inst = _linkSession.Attach( core, slot );
 		_linkInstances.Add( inst );
 	}
@@ -415,7 +417,7 @@ public sealed partial class EmulatorComponent
 			return;
 
 		try { FileSystem.Data.WriteAllBytes( _savePath, saveData ); }
-		catch ( Exception e ) { GbaLog.Write( LogCategory.GBA, LogLevel.Warn, $"Save write failed: {e.Message}" ); }
+		catch ( Exception e ) { EmuLog.Write( LogCategory.Core, LogLevel.Warn, $"Save write failed: {e.Message}" ); }
 	}
 
 	private void EnqueuePacketAudio( LinkCableAvPacket packet )
@@ -564,7 +566,7 @@ public sealed partial class EmulatorComponent
 		}
 		catch ( Exception e )
 		{
-			GbaLog.Write( LogCategory.GBA, LogLevel.Error, $"ReadRomBytes failed: {e.Message}" );
+			EmuLog.Write( LogCategory.Core, LogLevel.Error, $"ReadRomBytes failed: {e.Message}" );
 		}
 		return null;
 	}
@@ -579,7 +581,7 @@ public sealed partial class EmulatorComponent
 		}
 		catch ( Exception e )
 		{
-			GbaLog.Write( LogCategory.GBA, LogLevel.Warn, $"ReadHostSave failed: {e.Message}" );
+			EmuLog.Write( LogCategory.Core, LogLevel.Warn, $"ReadHostSave failed: {e.Message}" );
 		}
 		return null;
 	}

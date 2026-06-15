@@ -1,6 +1,6 @@
 @using System.Threading.Tasks
 
-@namespace sGBA
+@namespace Emulotl
 
 @inherits PanelComponent
 
@@ -155,7 +155,7 @@
 	private GameEntry SelectedGame => _allSoftwareOpen
 		? _allSoftwareSelection >= 0 && _allSoftwareSelection < _allGames.Count ? _allGames[_allSoftwareSelection] : null
 		: !IsHomeViewMoreSelected && _selectedIndex >= 0 && _selectedIndex < _homeItems.Count ? _homeItems[_selectedIndex] : null;
-	private string SelectedTitle => SelectedGame?.DisplayTitle ?? "sGBA";
+	private string SelectedTitle => SelectedGame?.DisplayTitle ?? "Emulotl";
 	private Texture SelectedLogo => SelectedGame != null && _logos.TryGetValue(SelectedGame.Path, out var logo) ? logo : null;
 	private Texture SelectedBackdrop => SelectedGame != null && _snaps.TryGetValue(SelectedGame.Path, out var snap) ? snap : SelectedGame != null && _boxArt.TryGetValue(SelectedGame.Path, out var cover) ? cover : null;
 	private float PreviousBackdropOpacity => _previousBackdrop == null ? 0f : _previousBackdropFading ? 0f : 1f;

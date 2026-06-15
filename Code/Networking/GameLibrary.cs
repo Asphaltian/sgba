@@ -1,4 +1,4 @@
-namespace sGBA;
+namespace Emulotl;
 
 public static class GameLibrary
 {
@@ -25,7 +25,7 @@ public static class GameLibrary
 	{
 		List<GameEntry> games;
 		try { games = GameEntry.Discover(); }
-		catch ( Exception e ) { Log.Warning( $"[sGBA] GameEntry.Discover failed: {e.Message}" ); return null; }
+		catch ( Exception e ) { Log.Warning( $"[Emulotl] GameEntry.Discover failed: {e.Message}" ); return null; }
 
 		if ( !string.IsNullOrEmpty( sha1 ) )
 		{

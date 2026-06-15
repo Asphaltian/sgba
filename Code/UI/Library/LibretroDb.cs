@@ -1,8 +1,8 @@
+using Emulotl.Gba;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using Emulotl;
 
-namespace sGBA;
+namespace Emulotl;
 
 public sealed record GameInfo(
 	string Name,
@@ -147,7 +147,7 @@ internal sealed class LibretroDb
 		}
 		catch ( Exception ex )
 		{
-			Log.Warning( $"[sGBA] Libretro metadata {folder} failed: {ex.Message}" );
+			Log.Warning( $"[Emulotl] Libretro metadata {folder} failed: {ex.Message}" );
 			return new FieldIndex();
 		}
 	}
@@ -171,7 +171,7 @@ internal sealed class LibretroDb
 		}
 		catch ( Exception ex )
 		{
-			Log.Warning( $"[sGBA] Libretro no-intro metadata failed: {ex.Message}" );
+			Log.Warning( $"[Emulotl] Libretro no-intro metadata failed: {ex.Message}" );
 			return new NoIntroIndex();
 		}
 	}
@@ -205,7 +205,7 @@ internal sealed class LibretroDb
 		}
 		catch ( Exception ex )
 		{
-			Log.Warning( $"[sGBA] Failed to cache Libretro metadata {folder}: {ex.Message}" );
+			Log.Warning( $"[Emulotl] Failed to cache Libretro metadata {folder}: {ex.Message}" );
 		}
 
 		return text;

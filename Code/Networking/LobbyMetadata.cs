@@ -1,6 +1,6 @@
 using Sandbox.Network;
 
-namespace sGBA;
+namespace Emulotl;
 
 public static class LobbyDataKeys
 {

@@ -1,7 +1,8 @@
+using Emulotl.Gba;
 using System.Collections.Concurrent;
 using Sandbox.Network;
 
-namespace sGBA;
+namespace Emulotl;
 
 public sealed class NetworkManager : Component, IWirelessNetwork, Component.INetworkListener
 {
@@ -381,7 +382,7 @@ public sealed class NetworkManager : Component, IWirelessNetwork, Component.INet
 		var match = GameLibrary.FindMatch( GameSha1, GameCode );
 		if ( match is null )
 		{
-			Log.Warning( $"[sGBA] Join: no matching game for '{GameTitle}' (code {GameCode}); returning to home." );
+			Log.Warning( $"[Emulotl] Join: no matching game for '{GameTitle}' (code {GameCode}); returning to home." );
 			Leave();
 			JoinRejected?.Invoke();
 			return;

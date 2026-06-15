@@ -1,4 +1,5 @@
-namespace sGBA;
+using Emulotl.Gba;
+namespace Emulotl;
 
 public sealed class LinkCableMode : INetMode
 {
@@ -228,7 +229,7 @@ public sealed class LinkCableMode : INetMode
 		if ( LinkCableAvPacket.TryParse( payload, payload.Length, out var packet ) )
 		{
 			try { OnRemoteAv?.Invoke( packet ); }
-			catch ( Exception e ) { Log.Warning( $"[sGBA] OnRemoteAv error: {e.Message}" ); }
+			catch ( Exception e ) { Log.Warning( $"[Emulotl] OnRemoteAv error: {e.Message}" ); }
 		}
 	}
 
@@ -240,7 +241,7 @@ public sealed class LinkCableMode : INetMode
 		if ( LinkCableStatePacket.TryParse( payload, payload.Length, out var packet ) )
 		{
 			try { OnRemoteState?.Invoke( packet ); }
-			catch ( Exception e ) { Log.Warning( $"[sGBA] OnRemoteState error: {e.Message}" ); }
+			catch ( Exception e ) { Log.Warning( $"[Emulotl] OnRemoteState error: {e.Message}" ); }
 		}
 	}
 }
