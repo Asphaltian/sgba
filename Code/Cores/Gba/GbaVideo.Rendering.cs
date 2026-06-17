@@ -372,7 +372,7 @@ public partial class GbaVideo
 		for ( int i = 0; i < 4; i++ )
 		{
 			if ( (DispCnt & (0x100 << i)) != 0 && y >= _enabledAtY[i] )
-				enabledMask |= (1u << i);
+				enabledMask |= 1u << i;
 		}
 		s.EnabledAtYMask = enabledMask;
 

@@ -14,6 +14,7 @@ public sealed partial class EmulatorComponent : Component
 	public static EmulatorComponent Current { get; private set; }
 	public IEmulatorCore Core => _coreThread?.Core;
 	public Texture ScreenTexture { get; private set; }
+	public IReadOnlyList<Texture> ScreenTextures { get; private set; } = [];
 	public bool IsReady { get; private set; }
 	public string ErrorMessage { get; private set; }
 
@@ -28,13 +29,14 @@ public sealed partial class EmulatorComponent : Component
 	private Stopwatch _videoClock;
 	private double _nextVideoFrameDue;
 
-	private const int AudioPrefillFrames = 2;
-	private const int AudioHighWaterFrames = 3;
-	private const int MaxPendingFrames = 3;
+	private const int AudioPrefillFrames = 4;
+	private const int AudioHighWaterFrames = 6;
+	private const int MaxPendingFrames = 6;
 	private const int SyncWaitMilliseconds = 50;
 	private const float StickDeadzone = 0.3f;
 
 	private int _inputKeys;
+	private int _touchState;
 	private bool _videoFramePending;
 	private bool _paused;
 	private bool _coreHalted;
@@ -110,6 +112,7 @@ public sealed partial class EmulatorComponent : Component
 			}
 
 			ScreenTexture = null;
+			ScreenTextures = [];
 		}
 
 		if ( _soundHandle is { IsValid: true } )
@@ -179,13 +182,14 @@ public sealed partial class EmulatorComponent : Component
 			}
 			_appliedReproduceClassicFeel = GamePreferences.ReproduceClassicFeel;
 			ScreenTexture = core.Screens[0].OutputTexture;
+			ScreenTextures = [.. core.Screens.Select( s => s.OutputTexture )];
 
 			_stateBasePath = "states/" + System.IO.Path.GetFileNameWithoutExtension( RomPath );
 
 			try { InitAudioStream(); }
 			catch ( Exception audioEx ) { EmuLog.Write( LogCategory.Audio, LogLevel.Warn, $"Audio init failed: {audioEx.Message}" ); }
 
-			_coreThread = new EmulatorCoreThread( core, CoreLock, ReadInputKeysActive, LogCoreThreadError, LogCoreThreadReset );
+			_coreThread = new EmulatorCoreThread( core, CoreLock, ReadInputKeysActive, ReadTouchState, LogCoreThreadError, LogCoreThreadReset );
 			_coreThread.Sync.LoadCoreOptions( audioSync: true, videoSync: true, fpsTarget: (float)_profile.NativeFps );
 			_coreThread.Sync.AudioHighWater = _profile.AudioSamplesPerFrame * AudioHighWaterFrames;
 			ResetVideoClock();
@@ -194,6 +198,7 @@ public sealed partial class EmulatorComponent : Component
 			_sessionTime = 0;
 			AchievementManager.OnSessionStarted();
 			IsReady = true;
+			ApplyGameplayCursor();
 		}
 		catch ( Exception ex )
 		{
@@ -228,6 +233,13 @@ public sealed partial class EmulatorComponent : Component
 		_soundHandle.AirAbsorption = false;
 		_soundHandle.Transmission = false;
 		_soundHandle.Stop( float.MaxValue );
+	}
+
+	public bool HasTouchscreen => _profile?.HasTouchscreen ?? false;
+
+	public void ApplyGameplayCursor()
+	{
+		Mouse.Visibility = HasTouchscreen ? MouseVisibility.Visible : MouseVisibility.Hidden;
 	}
 
 	private DisplayOptions CurrentDisplayOptions() => new( GamePreferences.ReproduceClassicFeel, GamePreferences.DisplayWithSmallScreen );
@@ -341,6 +353,24 @@ public sealed partial class EmulatorComponent : Component
 		return (ushort)Interlocked.CompareExchange( ref _inputKeys, 0, 0 );
 	}
 
+	private int ReadTouchState()
+	{
+		return Interlocked.CompareExchange( ref _touchState, 0, 0 );
+	}
+
+	public void SetUiTouch( bool down, float fx, float fy )
+	{
+		if ( !down || !HasTouchscreen )
+		{
+			Interlocked.Exchange( ref _touchState, 0 );
+			return;
+		}
+
+		int x = Math.Clamp( (int)(fx * 256f), 0, 255 );
+		int y = Math.Clamp( (int)(fy * 192f), 0, 191 );
+		Interlocked.Exchange( ref _touchState, unchecked((int)0x80000000) | (x << 8) | y );
+	}
+
 	private void ResetVideoClock()
 	{
 		_videoClock ??= new Stopwatch();
@@ -411,6 +441,7 @@ public sealed partial class EmulatorComponent : Component
 
 			_appliedReproduceClassicFeel = GamePreferences.ReproduceClassicFeel;
 			ScreenTexture = core.Screens[0].OutputTexture;
+			ScreenTextures = [.. core.Screens.Select( s => s.OutputTexture )];
 
 			_videoFramePending = true;
 			_coreThread?.Sync.ForceFrame();
@@ -482,8 +513,6 @@ public sealed partial class EmulatorComponent : Component
 		bool uploaded = false;
 		foreach ( IVideoOutput screen in core.Screens )
 		{
-			if ( screen.RenderCommandList == null )
-				continue;
 			if ( screen.UploadAndBuildCommandList() )
 				uploaded = true;
 		}

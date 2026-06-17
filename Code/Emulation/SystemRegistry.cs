@@ -4,7 +4,7 @@ public static class SystemRegistry
 {
 	private static readonly Dictionary<string, SystemProfile> _byId = new( StringComparer.OrdinalIgnoreCase );
 
-	public static IReadOnlyCollection<SystemProfile> All => _byId.Values.ToList();
+	public static IReadOnlyCollection<SystemProfile> All => [.. _byId.Values];
 
 	public static void Register( SystemProfile profile )
 	{

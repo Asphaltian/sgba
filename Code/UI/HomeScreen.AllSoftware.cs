@@ -407,7 +407,7 @@ public partial class HomeScreen
 		float thumbHeight = MathF.Max( 1f, AllSoftwareScrollbarThumbHeight * AllSoftwareScrollScale );
 		float travel = MathF.Max( 1f, trackHeight - thumbHeight );
 		float thumbTop = (Mouse.Position.y - AllSoftwareScrollbar.Box.Rect.Top - _allSoftwareScrollbarDragOffsetY).Clamp( 0f, travel );
-		float scrollY = (thumbTop / travel) * AllSoftwareMaxScrollY;
+		float scrollY = thumbTop / travel * AllSoftwareMaxScrollY;
 
 		SetAllSoftwareScrollY( scrollY );
 		QueueArtworkRefresh();

@@ -248,7 +248,7 @@
 		_selectedIndex = MenuContinue;
 		_inSlotPanel = false;
 		_input.End();
-		Mouse.Visibility = MouseVisibility.Hidden;
+		EmulatorComponent.Current.ApplyGameplayCursor();
 		Sound.Play("ui.popup.message.close");
 		EmulatorComponent.Current.SetPaused(false);
 	}

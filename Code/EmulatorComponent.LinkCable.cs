@@ -7,7 +7,7 @@ namespace Emulotl;
 public sealed partial class EmulatorComponent
 {
 	private LinkCableSession _linkSession;
-	private readonly List<LinkCableInstance> _linkInstances = new();
+	private readonly List<LinkCableInstance> _linkInstances = [];
 	private bool _linkedHost;
 	private bool _linkedClient;
 	private GbaVideo _clientVideo;

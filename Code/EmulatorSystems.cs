@@ -1,4 +1,6 @@
 using Emulotl.Gba;
+using Emulotl.Nds;
+
 namespace Emulotl;
 
 public static class EmulatorSystems
@@ -12,5 +14,6 @@ public static class EmulatorSystems
 
 		_registered = true;
 		SystemRegistry.Register( GbaSystem.Profile );
+		SystemRegistry.Register( NdsSystem.Profile );
 	}
 }

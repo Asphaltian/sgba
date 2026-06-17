@@ -58,7 +58,7 @@ public partial class GbaAudio
 
 					int sampleIdx = _ch3Window;
 					int byteIdx = bankOffset + sampleIdx / 2;
-					if ( byteIdx >= WaveRam.Length ) byteIdx &= (WaveRam.Length - 1);
+					if ( byteIdx >= WaveRam.Length ) byteIdx &= WaveRam.Length - 1;
 					byte dataByte = WaveRam[byteIdx];
 					int nibble = (sampleIdx & 1) == 0 ? (dataByte >> 4) : (dataByte & 0xF);
 

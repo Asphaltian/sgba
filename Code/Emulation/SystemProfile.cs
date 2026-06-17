@@ -48,6 +48,7 @@ public sealed class SystemProfile
 	public required int ClockRate { get; init; }
 	public required int CyclesPerFrame { get; init; }
 	public required InputButton[] Buttons { get; init; }
+	public bool HasTouchscreen { get; init; }
 	public int StateSlotCount { get; init; } = 4;
 	public required string LibretroPlatform { get; init; }
 	public required Func<byte[], string> ReadGameCode { get; init; }

@@ -349,7 +349,7 @@ public sealed class GbaWirelessAdapter
 		if ( ret < 0 )
 		{
 			SpiState = ComState.ResponseError;
-			_command = (Command)(byte)(-ret);
+			_command = (Command)(byte)-ret;
 			_payloadLength = 1;
 		}
 		else
@@ -628,7 +628,7 @@ public sealed class GbaWirelessAdapter
 			for ( int i = 0; i < MaxClients; i++ )
 			{
 				ref var client = ref _host.Clients[i];
-				uint dlen = Math.Min( (uint)HostPacketSize, client.Queue[0].Length );
+				uint dlen = Math.Min( HostPacketSize, client.Queue[0].Length );
 				if ( client.DeviceId != 0 && dlen != 0 )
 				{
 					Buffer.BlockCopy( client.Queue[0].Data, 0, tmp, (int)bufBytes, (int)dlen );

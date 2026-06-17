@@ -528,7 +528,7 @@ public class GbaIo
 				value = (ushort)((value & 0x7F8B) | (oldSioCnt & 0x0004));
 				if ( (value & 0x0081) == 0x0081 && SioCompletionCycle == long.MaxValue )
 				{
-					uint sent = (uint)_sioRegs[0] | ((uint)_sioRegs[1] << 16);
+					uint sent = _sioRegs[0] | ((uint)_sioRegs[1] << 16);
 					uint reply = WirelessAdapter.Transfer( sent );
 					_sioRegs[0] = (ushort)(reply & 0xFFFF);
 					_sioRegs[1] = (ushort)(reply >> 16);

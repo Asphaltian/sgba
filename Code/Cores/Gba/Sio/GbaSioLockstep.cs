@@ -34,7 +34,7 @@ public sealed class GbaSioLockstepPlayer
 	public readonly GbaSioMode[] OtherModes = new GbaSioMode[GbaSioLockstepCoordinator.MaxGbas];
 	public bool Asleep;
 	public int CycleOffset;
-	public readonly List<GbaSioLockstepEvent> Queue = new();
+	public readonly List<GbaSioLockstepEvent> Queue = [];
 	public bool DataReceived;
 
 	public int LockstepTime => Driver.CurrentTime - CycleOffset;
@@ -49,7 +49,7 @@ public sealed class GbaSioLockstepCoordinator
 
 	internal readonly object Sync = new();
 
-	private readonly Dictionary<uint, GbaSioLockstepPlayer> _players = new();
+	private readonly Dictionary<uint, GbaSioLockstepPlayer> _players = [];
 	private uint _nextId;
 
 	public readonly uint[] AttachedPlayers = new uint[MaxGbas];

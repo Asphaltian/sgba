@@ -49,6 +49,7 @@ public sealed partial class EmulatorComponent
 		private readonly object _stateLock = new();
 		private readonly object _coreLock;
 		private readonly Func<ushort> _readInputKeysActive;
+		private readonly Func<int> _readTouchState;
 		private readonly Action<string> _logError;
 		private readonly Action _resetCallback;
 		private readonly short[][] _audioBuffers;
@@ -61,11 +62,12 @@ public sealed partial class EmulatorComponent
 		private bool _waitPrologueVideoFrameWait;
 		private bool _waitPrologueAudioWait;
 
-		public EmulatorCoreThread( IEmulatorCore core, object coreLock, Func<ushort> readInputKeysActive, Action<string> logError, Action resetCallback )
+		public EmulatorCoreThread( IEmulatorCore core, object coreLock, Func<ushort> readInputKeysActive, Func<int> readTouchState, Action<string> logError, Action resetCallback )
 		{
 			Core = core;
 			_coreLock = coreLock;
 			_readInputKeysActive = readInputKeysActive;
+			_readTouchState = readTouchState;
 			_logError = logError;
 			_resetCallback = resetCallback;
 			_audioBuffers = new short[4][];
@@ -219,6 +221,10 @@ public sealed partial class EmulatorComponent
 			lock ( _coreLock )
 			{
 				Core.SetButtons( 0, _readInputKeysActive() );
+
+				int ts = _readTouchState();
+				Core.SetTouch( (ts & unchecked((int)0x80000000)) != 0, (ts >> 8) & 0x1FF, ts & 0xFF );
+
 				Core.RunFrame();
 
 				if ( token.IsCancellationRequested )
@@ -233,7 +239,7 @@ public sealed partial class EmulatorComponent
 					Buffer.BlockCopy( Core.Audio.OutputBuffer, 0, audio, 0, audioSamples * Core.Profile.AudioChannels * sizeof( short ) );
 
 				if ( Core.SaveData.ConsumeDirty() && Core.SaveData.Data.Length > 0 )
-					saveData = Core.SaveData.Data.ToArray();
+					saveData = [.. Core.SaveData.Data];
 			}
 
 			return new FramePacket( audio, audioSamples, saveData );

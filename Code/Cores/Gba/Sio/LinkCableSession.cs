@@ -268,7 +268,7 @@ public sealed class LinkCableSession
 
 		byte[] saveData = null;
 		if ( core.Savedata.Clean() && core.Savedata.Data.Length > 0 )
-			saveData = core.Savedata.Data.ToArray();
+			saveData = [.. core.Savedata.Data];
 
 		var packet = new LinkCableAvPacket
 		{

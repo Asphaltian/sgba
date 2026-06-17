@@ -14,6 +14,8 @@ public interface IEmulatorCore
 
 	void SetButtons( int player, ulong pressedMask );
 
+	void SetTouch( bool down, int x, int y ) { }
+
 	IReadOnlyList<IVideoOutput> Screens { get; }
 
 	IAudioOutput Audio { get; }

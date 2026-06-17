@@ -1,11 +1,16 @@
+@using Sandbox
+@using Sandbox.UI
+
 @namespace Emulotl
 
 @inherits PanelComponent
 
 @{
 	bool homeVisible = HomeScreen.Current?.IsVisible == true;
-	Texture tex = homeVisible ? null : EmulatorComponent.Current?.ScreenTexture;
-	bool showBackdrop = !homeVisible && (EmulatorComponent.Current?.IsReady == true || !string.IsNullOrEmpty( EmulatorComponent.Current?.RomPath ));
+	EmulatorComponent emulator = EmulatorComponent.Current;
+	IReadOnlyList<Texture> screens = homeVisible ? null : emulator?.ScreenTextures;
+	bool showBackdrop = !homeVisible && (emulator?.IsReady == true || !string.IsNullOrEmpty( emulator?.RomPath ));
+	bool touch = emulator?.HasTouchscreen == true && screens != null && screens.Count >= 2;
 	string rootClass = GamePreferences.DisplayWithSmallScreen ? "small-screen" : string.Empty;
 }
 
@@ -14,20 +19,96 @@
 	{
 		<div class="screen-backdrop" />
 	}
-	@if (tex != null)
+	@if ( screens != null && screens.Count > 0 )
 	{
-		<TextureImage Texture=@tex class="screen" />
+		<div class="screen-stack @(touch ? "touchable" : "")" @ref=_stackPanel
+			onmousedown=@OnTouchDown onmousemove=@OnTouchMove onmouseup=@OnTouchUp onmouseout=@OnTouchUp>
+			@foreach ( Texture screen in screens )
+			{
+				<TextureImage Texture=@screen class="screen" />
+			}
+		</div>
 	}
 </root>
 
 @code
 {
+	private Panel _stackPanel;
+	private bool _touchDown;
+
+	private void OnTouchDown()
+	{
+		_touchDown = true;
+		UpdateTouch();
+	}
+
+	private void OnTouchMove()
+	{
+		if ( _touchDown )
+			UpdateTouch();
+	}
+
+	private void OnTouchUp()
+	{
+		_touchDown = false;
+		EmulatorComponent.Current?.SetUiTouch( false, 0, 0 );
+	}
+
+	private void UpdateTouch()
+	{
+		EmulatorComponent emulator = EmulatorComponent.Current;
+		if ( emulator == null || _stackPanel == null || emulator.HasTouchscreen != true )
+			return;
+
+		Rect s = _stackPanel.Box.Rect;
+		if ( s.Width <= 0 || s.Height <= 0 )
+			return;
+
+		float ex = s.Left;
+		float ey = s.Top + s.Height * 0.5f;
+		float ew = s.Width;
+		float eh = s.Height * 0.5f;
+
+		const float texAspect = 256f / 192f;
+		float elemAspect = ew / eh;
+		float tw, th, tx, ty;
+		if ( elemAspect > texAspect )
+		{
+			th = eh;
+			tw = th * texAspect;
+			tx = ex + (ew - tw) * 0.5f;
+			ty = ey;
+		}
+		else
+		{
+			tw = ew;
+			th = tw / texAspect;
+			tx = ex;
+			ty = ey + (eh - th) * 0.5f;
+		}
+
+		float fx = (Mouse.Position.x - tx) / tw;
+		float fy = (Mouse.Position.y - ty) / th;
+
+		if ( fx < 0f || fx > 1f || fy < 0f || fy > 1f )
+		{
+			emulator.SetUiTouch( false, 0, 0 );
+			return;
+		}
+
+		emulator.SetUiTouch( true, fx, fy );
+	}
+
 	protected override int BuildHash()
 	{
 		EmulatorComponent emulator = EmulatorComponent.Current;
 		bool homeVisible = HomeScreen.Current?.IsVisible == true;
-		Texture texture = homeVisible ? null : emulator?.ScreenTexture;
+		IReadOnlyList<Texture> screens = homeVisible ? null : emulator?.ScreenTextures;
 		bool showBackdrop = !homeVisible && (emulator?.IsReady == true || !string.IsNullOrEmpty( emulator?.RomPath ));
-		return HashCode.Combine( texture, showBackdrop, homeVisible, GamePreferences.DisplayWithSmallScreen );
+		int screenHash = 0;
+		if ( screens != null )
+			foreach ( Texture screen in screens )
+				screenHash = HashCode.Combine( screenHash, screen );
+		return HashCode.Combine( screenHash, showBackdrop, homeVisible, GamePreferences.DisplayWithSmallScreen, emulator?.HasTouchscreen );
 	}
 }
