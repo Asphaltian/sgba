@@ -10,20 +10,19 @@ public sealed partial class NDS
 	private byte SRAMCmd;
 	private uint SRAMAddr;
 	private uint SRAMPos;
+
+	private uint SRAMSaveAddr;
+	private uint SRAMSaveLen;
+
 	private bool SRAMSelected;
 
 	private void ResetCartSave()
 	{
-		int type = NdsSaveDatabase.TypeForRom( _rom );
-		int len;
-		if ( type >= 0 )
-			len = NdsSaveDatabase.Length( type );
-		else if ( _save.LoadedLength > 0 )
-			len = _save.LoadedLength;
-		else
-			len = NdsSaveDatabase.DefaultLength;
+		int savememtype = NdsSaveDatabase.SaveMemType( _rom );
+		int len = NdsSaveDatabase.Length( savememtype );
+		int type = NdsSaveDatabase.SramType( savememtype );
 
-		_save.Setup( len );
+		_save.Setup( len, type );
 		SRAM = _save.Data;
 		SRAMLength = (uint)_save.Data.Length;
 		SRAMType = _save.Type;
@@ -32,12 +31,28 @@ public sealed partial class NDS
 		SRAMCmd = 0;
 		SRAMAddr = 0;
 		SRAMPos = 0;
+
+		SRAMSaveAddr = 0;
+		SRAMSaveLen = 0;
+
 		SRAMSelected = false;
 	}
 
 	private void SaveSPISelect()
 	{
 		SRAMPos = 0;
+	}
+
+	private void SaveSPIRelease()
+	{
+		if ( (SRAMStatus & (1 << 1)) != 0 && SRAMSaveLen > 0 )
+		{
+			_save.MarkDirty();
+
+			SRAMStatus &= unchecked((byte)~(1 << 1));
+			SRAMSaveAddr = 0;
+			SRAMSaveLen = 0;
+		}
 	}
 
 	private byte SaveSPITransmitReceive( byte val )
@@ -69,9 +84,6 @@ public sealed partial class NDS
 			};
 		}
 
-		if ( SRAMType == 3 && (SRAMCmd == 0xD8 || SRAMCmd == 0xDB) )
-			_save.MarkDirty();
-
 		SRAMPos++;
 		return ret;
 	}
@@ -93,13 +105,15 @@ public sealed partial class NDS
 				if ( SRAMPos < 2 )
 				{
 					SRAMAddr = val;
+					SRAMSaveAddr = SRAMAddr + (SRAMCmd == 0x0A ? 0x100u : 0);
+					SRAMSaveLen = 0;
 				}
 				else
 				{
 					if ( (SRAMStatus & (1 << 1)) != 0 )
 					{
 						SRAM[(SRAMAddr + (SRAMCmd == 0x0A ? 0x100u : 0)) & 0x1FF] = val;
-						_save.MarkDirty();
+						SRAMSaveLen++;
 					}
 					SRAMAddr++;
 				}
@@ -147,13 +161,15 @@ public sealed partial class NDS
 				{
 					SRAMAddr <<= 8;
 					SRAMAddr |= val;
+					SRAMSaveAddr = SRAMAddr;
+					SRAMSaveLen = 0;
 				}
 				else
 				{
 					if ( (SRAMStatus & (1 << 1)) != 0 )
 					{
 						SRAM[SRAMAddr & (SRAMLength - 1)] = val;
-						_save.MarkDirty();
+						SRAMSaveLen++;
 					}
 					SRAMAddr++;
 				}
@@ -189,18 +205,19 @@ public sealed partial class NDS
 				return SRAMStatus;
 
 			case 0x02:
-			case 0x0A:
 				if ( SRAMPos <= 3 )
 				{
 					SRAMAddr <<= 8;
 					SRAMAddr |= val;
+					SRAMSaveAddr = SRAMAddr;
+					SRAMSaveLen = 0;
 				}
 				else
 				{
 					if ( (SRAMStatus & (1 << 1)) != 0 )
 					{
-						SRAM[SRAMAddr & (SRAMLength - 1)] = SRAMCmd == 0x0A ? val : (byte)0;
-						_save.MarkDirty();
+						SRAM[SRAMAddr & (SRAMLength - 1)] = 0;
+						SRAMSaveLen++;
 					}
 					SRAMAddr++;
 				}
@@ -219,6 +236,25 @@ public sealed partial class NDS
 					SRAMAddr++;
 					return ret;
 				}
+
+			case 0x0A:
+				if ( SRAMPos <= 3 )
+				{
+					SRAMAddr <<= 8;
+					SRAMAddr |= val;
+					SRAMSaveAddr = SRAMAddr;
+					SRAMSaveLen = 0;
+				}
+				else
+				{
+					if ( (SRAMStatus & (1 << 1)) != 0 )
+					{
+						SRAM[SRAMAddr & (SRAMLength - 1)] = val;
+						SRAMSaveLen++;
+					}
+					SRAMAddr++;
+				}
+				return 0;
 
 			case 0x0B:
 				if ( SRAMPos <= 3 )
@@ -246,6 +282,8 @@ public sealed partial class NDS
 				{
 					SRAMAddr <<= 8;
 					SRAMAddr |= val;
+					SRAMSaveAddr = SRAMAddr;
+					SRAMSaveLen = 0;
 				}
 				if ( SRAMPos == 3 && (SRAMStatus & (1 << 1)) != 0 )
 				{
@@ -254,6 +292,7 @@ public sealed partial class NDS
 						SRAM[SRAMAddr & (SRAMLength - 1)] = 0;
 						SRAMAddr++;
 					}
+					SRAMSaveLen = 0x10000;
 				}
 				return 0;
 
@@ -262,6 +301,8 @@ public sealed partial class NDS
 				{
 					SRAMAddr <<= 8;
 					SRAMAddr |= val;
+					SRAMSaveAddr = SRAMAddr;
+					SRAMSaveLen = 0;
 				}
 				if ( SRAMPos == 3 && (SRAMStatus & (1 << 1)) != 0 )
 				{
@@ -270,6 +311,7 @@ public sealed partial class NDS
 						SRAM[SRAMAddr & (SRAMLength - 1)] = 0;
 						SRAMAddr++;
 					}
+					SRAMSaveLen = 0x100;
 				}
 				return 0;
 
@@ -301,6 +343,9 @@ public sealed partial class NDS
 				SaveSPISelect();
 
 			AuxSpiData[cpu] = SaveSPITransmitReceive( val );
+
+			if ( !hold )
+				SaveSPIRelease();
 		}
 		else
 		{

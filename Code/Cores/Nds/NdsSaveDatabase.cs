@@ -1,56 +1,49 @@
-using System.Collections.Generic;
-
 namespace Emulotl.Nds;
 
 public static class NdsSaveDatabase
 {
-	public const int DefaultLength = 8192;
-
 	private static readonly int[] SramLengths =
-	{
+	[
 		0,
 		512,
-		8192, 65536, 131072,
-		262144, 524288, 1048576,
-		8388608, 16777216, 67108864
-	};
+		8192, 65536, 128 * 1024,
+		256 * 1024, 512 * 1024, 1024 * 1024,
+		8192 * 1024, 16384 * 1024, 65536 * 1024
+	];
 
-	private static readonly Dictionary<uint, int> SaveTypeByTitle = new()
+	public static int SaveMemType( byte[] rom )
 	{
-		{ Id( "C2S" ), 4 },
-		{ Id( "ADA" ), 6 }, { Id( "APA" ), 6 }, { Id( "CPU" ), 6 },
-		{ Id( "IPK" ), 6 }, { Id( "IPG" ), 6 },
-		{ Id( "IRB" ), 6 }, { Id( "IRA" ), 6 }, { Id( "IRE" ), 6 }, { Id( "IRD" ), 6 },
-		{ Id( "ASM" ), 2 },
-		{ Id( "A2D" ), 2 },
-		{ Id( "ADM" ), 5 },
-		{ Id( "AMH" ), 5 },
-		{ Id( "AY9" ), 3 },
-		{ Id( "BZH" ), 1 },
-		{ Id( "AKW" ), 2 },
-		{ Id( "YKG" ), 3 },
-		{ Id( "B3R" ), 5 },
-		{ Id( "CB6" ), 2 },
-		{ Id( "YFT" ), 5 },
-		{ Id( "A5F" ), 2 },
-		{ Id( "COL" ), 3 },
-	};
+		if ( rom == null || rom.Length < 0x24 )
+			return 0;
 
-	private static uint Id( string s ) => (uint)(s[0] | (s[1] << 8) | (s[2] << 16));
+		if ( !NdsRomList.ReadROMParams( GameCodeAsU32( rom ), out uint raw ) )
+			raw = IsHomebrew( rom ) ? 0u : 2u;
 
-	public static int TypeForRom( byte[] rom )
-	{
-		if ( rom == null || rom.Length < 0x10 )
-			return -1;
-
-		uint title = (uint)(rom[0x0C] | (rom[0x0D] << 8) | (rom[0x0E] << 16));
-		return SaveTypeByTitle.TryGetValue( title, out int type ) ? type : -1;
+		return raw <= 10 ? (int)raw : 0;
 	}
 
-	public static int Length( int type )
+	public static int Length( int saveMemType )
 	{
-		if ( type < 0 || type >= SramLengths.Length )
-			return DefaultLength;
-		return SramLengths[type];
+		uint t = (uint)saveMemType <= 10 ? (uint)saveMemType : 0;
+		return SramLengths[t];
+	}
+
+	public static int SramType( int saveMemType ) => saveMemType switch
+	{
+		1 => 1,
+		2 or 3 or 4 => 2,
+		5 or 6 or 7 => 3,
+		8 or 9 or 10 => 4,
+		_ => 0,
+	};
+
+	private static uint GameCodeAsU32( byte[] rom ) =>
+		(uint)(rom[0x0C] | (rom[0x0D] << 8) | (rom[0x0E] << 16) | (rom[0x0F] << 24));
+
+	private static bool IsHomebrew( byte[] rom )
+	{
+		uint arm9off = (uint)(rom[0x20] | (rom[0x21] << 8) | (rom[0x22] << 16) | (rom[0x23] << 24));
+		bool hashes = rom[0x0C] == (byte)'#' && rom[0x0D] == (byte)'#' && rom[0x0E] == (byte)'#' && rom[0x0F] == (byte)'#';
+		return arm9off < 0x4000 || hashes;
 	}
 }

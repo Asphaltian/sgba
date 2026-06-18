@@ -41,7 +41,7 @@ public sealed class SPUChannel
 		{ -0x7FFF, -0x7FFF, -0x7FFF, -0x7FFF, -0x7FFF, -0x7FFF, -0x7FFF, -0x7FFF }
 	};
 
-	private static readonly byte[] VolShift = { 4, 3, 2, 0 };
+	private static readonly byte[] VolShift = [4, 3, 2, 0];
 
 	public AudioInterpolation InterpType = AudioInterpolation.None;
 

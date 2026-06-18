@@ -19,7 +19,7 @@ public sealed class NdsSaveData : ISaveData
 
 	public void Load( byte[] data ) => _loaded = data ?? [];
 
-	public void Setup( int length )
+	public void Setup( int length, int type )
 	{
 		if ( length <= 0 )
 		{
@@ -40,15 +40,7 @@ public sealed class NdsSaveData : ISaveData
 				Array.Copy( _loaded, Data, Math.Min( _loaded.Length, length ) );
 		}
 
-		Type = DeriveType( length );
-	}
-
-	public static int DeriveType( int len )
-	{
-		if ( len == 0 ) return 0;
-		if ( len == 512 ) return 1;
-		if ( len <= 0x20000 ) return 2;
-		return 3;
+		Type = type;
 	}
 
 	public void MarkDirty() => _dirty |= DirtNew;
