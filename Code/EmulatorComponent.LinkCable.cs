@@ -57,7 +57,7 @@ public sealed partial class EmulatorComponent
 		_audioStream?.Dispose();
 		_audioStream = null;
 
-		GbaCore core0 = soloCore ?? CreateLinkedCore( romData, hostSave, ComputeAutoScale(), localDisplay: true );
+		GbaCore core0 = soloCore ?? CreateLinkedCore( romData, hostSave, 1, localDisplay: true );
 
 		var inst0 = _linkSession.Attach( core0, 0 );
 		_linkInstances.Add( inst0 );
@@ -118,7 +118,7 @@ public sealed partial class EmulatorComponent
 
 		EnsureProfile();
 
-		_clientVideo = GbaVideo.CreatePresenter( ComputeAutoScale() );
+		_clientVideo = GbaVideo.CreatePresenter( 1 );
 		_clientVideo.SetReproduceClassicFeel( GamePreferences.ReproduceClassicFeel );
 		_appliedReproduceClassicFeel = GamePreferences.ReproduceClassicFeel;
 		if ( _camera.IsValid() && _clientVideo.RenderCommandList != null )

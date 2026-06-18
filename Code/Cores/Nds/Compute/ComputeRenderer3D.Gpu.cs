@@ -90,11 +90,11 @@ public sealed partial class ComputeRenderer3D
 		_indirectArgs = new GpuBuffer<GpuBuffer.IndirectDispatchArguments>(
 			MaxVariants + 1, GpuBuffer.UsageFlags.Structured | GpuBuffer.UsageFlags.IndirectDrawArguments );
 
-		_outputTex = Texture.Create( _screenWidth, _screenHeight )
-			.WithUAVBinding()
+		_outputTex = Texture.CreateRenderTarget()
+			.WithSize( _screenWidth, _screenHeight )
 			.WithFormat( ImageFormat.RGBA8888 )
-			.WithDynamicUsage()
-			.Finish();
+			.WithUAVBinding()
+			.Create();
 
 		for ( int i = 0; i < BufRing; i++ )
 		{

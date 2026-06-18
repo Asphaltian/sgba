@@ -171,7 +171,7 @@ public sealed partial class EmulatorComponent : Component
 
 			core.Reset();
 
-			int scale = ComputeAutoScale();
+			int scale = 1;
 			DisplayOptions display = CurrentDisplayOptions();
 			foreach ( IVideoOutput screen in core.Screens )
 			{
@@ -243,14 +243,6 @@ public sealed partial class EmulatorComponent : Component
 	}
 
 	private DisplayOptions CurrentDisplayOptions() => new( GamePreferences.ReproduceClassicFeel, GamePreferences.DisplayWithSmallScreen );
-
-	private int ComputeAutoScale()
-	{
-		int screenWidth = Screen.Width > 0 ? (int)Screen.Width : 1920;
-		int screenHeight = Screen.Height > 0 ? (int)Screen.Height : 1080;
-		ScreenSpec native = _profile?.Screens is { Length: > 0 } screens ? screens[0] : new ScreenSpec( 240, 160 );
-		return Math.Clamp( Math.Min( screenWidth / native.Width, screenHeight / native.Height ), 1, 8 );
-	}
 
 	protected override void OnUpdate()
 	{
@@ -414,7 +406,7 @@ public sealed partial class EmulatorComponent : Component
 		if ( core == null || core.Screens.Count == 0 )
 			return;
 
-		int desiredScale = ComputeAutoScale();
+		int desiredScale = 1;
 		if ( core.Screens[0].GpuScale == desiredScale )
 			return;
 

@@ -129,9 +129,10 @@ public sealed partial class ComputeRenderer3D
 			cmd.UavBarrier( _binResultBuffer );
 			cmd.UavBarrier( _workDescBuffer );
 
+			cmd.ResourceBarrierTransition( _indirectArgs, ResourceState.UnorderedAccess );
 			cmd.DispatchCompute( _csCalcWorkOffset, numVariants, 1, 1 );
 			cmd.UavBarrier( _binResultBuffer );
-			cmd.UavBarrier( _indirectArgs );
+			cmd.ResourceBarrierTransition( _indirectArgs, ResourceState.IndirectArgument );
 
 			cmd.DispatchComputeIndirect( _csSortWork, _indirectArgs, SortWorkArgIndex );
 			cmd.UavBarrier( _workDescBuffer );
