@@ -178,6 +178,8 @@ public sealed partial class NDS
 				if ( (val & 0x20) != 0 && (IPCSync7 & 0x4000) != 0 )
 					SetIRQ( 1, IRQ.IPCSync );
 				return;
+			case 0x040001A0: WriteAuxSpiCnt( 0, val, 0x00FF ); return;
+			case 0x040001A1: WriteAuxSpiCnt( 0, (ushort)(val << 8), 0xFF00 ); return;
 			case 0x040001A2: WriteAuxSpiData( 0, val ); return;
 			case 0x04000300: PostFlag9 = (byte)((PostFlag9 & 0x1) | (val & 0x3)); return;
 		}
@@ -520,6 +522,8 @@ public sealed partial class NDS
 					SetIRQ( 0, IRQ.IPCSync );
 				return;
 			case 0x040001C2: WriteSpiData( val ); return;
+			case 0x040001A0: WriteAuxSpiCnt( 1, val, 0x00FF ); return;
+			case 0x040001A1: WriteAuxSpiCnt( 1, (ushort)(val << 8), 0xFF00 ); return;
 			case 0x040001A2: WriteAuxSpiData( 1, val ); return;
 			case 0x04000138: RtcWrite( val, true ); return;
 			default:
