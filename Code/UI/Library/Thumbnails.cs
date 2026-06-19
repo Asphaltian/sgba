@@ -32,6 +32,9 @@ public static class Thumbnails
 		if ( game is null || string.IsNullOrWhiteSpace( game.NoIntroName ) )
 			return null;
 
+		if ( type == ThumbType.Logo )
+			return null;
+
 		var exactCachedTexture = TryLoadCachedTexture( game, type );
 		if ( exactCachedTexture != null )
 			return exactCachedTexture;
