@@ -632,6 +632,21 @@ public sealed partial class GPU3D
 			case 0x0400062C: return (uint)PosTestResult[3];
 		}
 
+		if ( addr >= 0x04000640 && addr < 0x04000680 )
+		{
+			Run();
+			UpdateClipMatrix();
+			return (uint)ClipMatrix[(addr - 0x04000640) >> 2];
+		}
+
+		if ( addr >= 0x04000680 && addr < 0x040006A4 )
+		{
+			Run();
+			int i = (int)((addr - 0x04000680) >> 2);
+			i += i >= 6 ? 2 : i >= 3 ? 1 : 0;
+			return (uint)VecMatrix[i];
+		}
+
 		return 0;
 	}
 
