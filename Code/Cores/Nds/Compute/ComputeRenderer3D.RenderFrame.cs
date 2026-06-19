@@ -56,8 +56,16 @@ public sealed partial class ComputeRenderer3D
 			for ( int v = 0; v < nverts; v++ )
 			{
 				ref Vertex vtx = ref _gpu.VertexRAM[polygon.Vertices[v]];
-				_scaledPositions[v, 0] = vtx.Fx * _scaleFactor;
-				_scaledPositions[v, 1] = vtx.Fy * _scaleFactor;
+				if ( _hiresCoordinates )
+				{
+					_scaledPositions[v, 0] = (vtx.Hx * _scaleFactor) >> 4;
+					_scaledPositions[v, 1] = (vtx.Hy * _scaleFactor) >> 4;
+				}
+				else
+				{
+					_scaledPositions[v, 0] = vtx.Fx * _scaleFactor;
+					_scaledPositions[v, 1] = vtx.Fy * _scaleFactor;
+				}
 				ytop = Math.Min( _scaledPositions[v, 1], ytop );
 				ybot = Math.Max( _scaledPositions[v, 1], ybot );
 			}

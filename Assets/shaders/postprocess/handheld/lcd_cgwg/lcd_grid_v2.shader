@@ -85,7 +85,8 @@ CS
 
 	float3 FetchOffset( int2 coord, int2 offset )
 	{
-		float3 sampleColor = Source.Load( int3( coord + offset, 0 ) ).rgb;
+		float2 uv = ( float2( coord + offset ) + 0.5 ) * OriginalSize.zw;
+		float3 sampleColor = Source.SampleLevel( PointClamp, uv, 0 ).rgb;
 		return pow( gain * sampleColor + blacklevel.xxx, gamma.xxx ) + ambient.xxx;
 	}
 
@@ -96,7 +97,7 @@ CS
 			return;
 
 		const float outgamma = 2.2;
-		float2 texelSize = SourceSize.zw;
+		float2 texelSize = OriginalSize.zw;
 		float2 range = OutputSize.zw;
 		float2 vTexCoord = PixelCoordToUv( id.xy, OutputSize.xy );
 		float3 cred = pow( float3( RSUBPIX_R, RSUBPIX_G, RSUBPIX_B ), outgamma.xxx );

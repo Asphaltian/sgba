@@ -12,6 +12,7 @@ public sealed partial class ComputeRenderer3D
 	private readonly RenderPolygonGpu[] _renderPolygons = new RenderPolygonGpu[2048];
 
 	private int _scaleFactor = 1;
+	private bool _hiresCoordinates = true;
 
 	public ComputeRenderer3D( GPU3D gpu, GPU gpu2d )
 	{
@@ -19,8 +20,9 @@ public sealed partial class ComputeRenderer3D
 		_gpu2d = gpu2d;
 	}
 
-	public void SetRenderSettings( int scale )
+	public void SetRenderSettings( int scale, bool hiresCoordinates = true )
 	{
 		_scaleFactor = Math.Max( 1, scale );
+		_hiresCoordinates = hiresCoordinates;
 	}
 }

@@ -71,6 +71,7 @@ public sealed partial class NDS
 			case 0x0400010C: return TimerGetCounter( 3 );
 			case 0x0400010E: return Timers[3].Cnt;
 			case 0x04000130: return KeyInput;
+			case 0x04000134: return RCnt;
 			case 0x04000208: return (ushort)IME[0];
 			case 0x04000304: return (ushort)PowerControl9;
 		}
@@ -195,6 +196,7 @@ public sealed partial class NDS
 		{
 			case 0x04000004: GPU.SetDispStat( 0, val, 0xFFFF ); return;
 			case 0x04000006: GPU.SetVCount( val, 0xFFFF ); return;
+			case 0x04000134: RCnt = val; return;
 			case 0x0400006C: GPU.MasterBrightnessA = (ushort)(val & 0xC01F); return;
 			case 0x0400106C: GPU.MasterBrightnessB = (ushort)(val & 0xC01F); return;
 			case 0x04000064: GPU.CaptureCnt = (GPU.CaptureCnt & 0xFFFF0000) | (uint)(val & 0x1F1F); return;
@@ -439,6 +441,7 @@ public sealed partial class NDS
 			case 0x0400010C: return TimerGetCounter( 7 );
 			case 0x0400010E: return Timers[7].Cnt;
 			case 0x04000130: return KeyInput;
+			case 0x04000134: return RCnt;
 			case 0x04000136: return ExtKeyIn;
 			case 0x04000138: return RtcRead();
 			case 0x040001A0: return AuxSpiCnt[1];
@@ -550,6 +553,7 @@ public sealed partial class NDS
 		{
 			case 0x04000004: GPU.SetDispStat( 1, val, 0xFFFF ); return;
 			case 0x04000006: GPU.SetVCount( val, 0xFFFF ); return;
+			case 0x04000134: RCnt = val; return;
 			case 0x04000138: RtcWrite( val, false ); return;
 			case 0x040001A0: WriteAuxSpiCnt( 1, val, 0xFFFF ); return;
 			case 0x040001A2: WriteAuxSpiData( 1, (byte)val ); return;
