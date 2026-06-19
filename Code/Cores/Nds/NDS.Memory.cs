@@ -277,6 +277,7 @@ public sealed partial class NDS
 			case 0x03000000: return SWRAM_ARM7.Mem != null ? SWRAM_ARM7.Mem[SWRAM_ARM7.Offset + (addr & SWRAM_ARM7.Mask)] : ARM7WRAM[addr & (NdsConstants.Arm7WramSize - 1)];
 			case 0x03800000: return ARM7WRAM[addr & (NdsConstants.Arm7WramSize - 1)];
 			case 0x04000000: return ARM7IORead8( addr );
+			case 0x04800000: return addr < 0x04810000 ? (byte)(Wifi.Read( addr & ~1u ) >> (int)((addr & 1) * 8)) : (byte)0;
 			case 0x06000000:
 			case 0x06800000: return (byte)GPU.ReadVRAM_ARM7( addr, 1 );
 		}
@@ -300,6 +301,7 @@ public sealed partial class NDS
 			case 0x03000000: return SWRAM_ARM7.Mem != null ? Read16( SWRAM_ARM7.Mem, SWRAM_ARM7.Offset + (addr & SWRAM_ARM7.Mask) ) : Read16( ARM7WRAM, addr & (NdsConstants.Arm7WramSize - 1) );
 			case 0x03800000: return Read16( ARM7WRAM, addr & (NdsConstants.Arm7WramSize - 1) );
 			case 0x04000000: return ARM7IORead16( addr );
+			case 0x04800000: return addr < 0x04810000 ? Wifi.Read( addr ) : (ushort)0;
 			case 0x06000000:
 			case 0x06800000: return (ushort)GPU.ReadVRAM_ARM7( addr, 2 );
 		}
@@ -323,6 +325,7 @@ public sealed partial class NDS
 			case 0x03000000: return SWRAM_ARM7.Mem != null ? Read32( SWRAM_ARM7.Mem, SWRAM_ARM7.Offset + (addr & SWRAM_ARM7.Mask) ) : Read32( ARM7WRAM, addr & (NdsConstants.Arm7WramSize - 1) );
 			case 0x03800000: return Read32( ARM7WRAM, addr & (NdsConstants.Arm7WramSize - 1) );
 			case 0x04000000: return ARM7IORead32( addr );
+			case 0x04800000: return addr < 0x04810000 ? (uint)(Wifi.Read( addr ) | (Wifi.Read( addr + 2 ) << 16)) : 0u;
 			case 0x06000000:
 			case 0x06800000: return GPU.ReadVRAM_ARM7( addr, 4 );
 		}
@@ -359,6 +362,7 @@ public sealed partial class NDS
 				return;
 			case 0x03800000: Write16( ARM7WRAM, addr & (NdsConstants.Arm7WramSize - 1), val ); return;
 			case 0x04000000: ARM7IOWrite16( addr, val ); return;
+			case 0x04800000: if ( addr < 0x04810000 ) Wifi.Write( addr, val ); return;
 			case 0x06000000:
 			case 0x06800000: GPU.WriteVRAM_ARM7( addr, val, 2 ); return;
 		}
@@ -379,6 +383,7 @@ public sealed partial class NDS
 			case 0x03800000:
 				Write32( ARM7WRAM, addr & (NdsConstants.Arm7WramSize - 1), val ); return;
 			case 0x04000000: ARM7IOWrite32( addr, val ); return;
+			case 0x04800000: if ( addr < 0x04810000 ) { Wifi.Write( addr, (ushort)val ); Wifi.Write( addr + 2, (ushort)(val >> 16) ); } return;
 			case 0x06000000:
 			case 0x06800000: GPU.WriteVRAM_ARM7( addr, val, 4 ); return;
 		}

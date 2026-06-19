@@ -600,7 +600,7 @@ public sealed partial class NDS
 			case 0x0400010C: Timers[7].Reload = val; return;
 			case 0x0400010E: TimerStart( 7, val ); return;
 			case 0x04000208: IME[1] = (uint)(val & 0x1); UpdateIRQ( 1 ); return;
-			case 0x04000304: PowerControl7 = (uint)(val & 0x0003); SPU.SetPowerCnt( PowerControl7 & 0x0001 ); return;
+			case 0x04000304: PowerControl7 = (uint)(val & 0x0003); SPU.SetPowerCnt( PowerControl7 & 0x0001 ); Wifi.SetPowerCnt( PowerControl7 & 0x0002 ); return;
 			case 0x04000308: if ( ARM7BIOSProt == 0 ) ARM7BIOSProt = (uint)(val & 0xFFFE); return;
 		}
 	}
@@ -670,7 +670,7 @@ public sealed partial class NDS
 			case 0x04000208: IME[1] = val & 0x1; UpdateIRQ( 1 ); return;
 			case 0x04000210: IE[1] = val; UpdateIRQ( 1 ); return;
 			case 0x04000214: IF[1] &= ~val; UpdateIRQ( 1 ); return;
-			case 0x04000304: PowerControl7 = val & 0x0003; SPU.SetPowerCnt( PowerControl7 & 0x0001 ); return;
+			case 0x04000304: PowerControl7 = val & 0x0003; SPU.SetPowerCnt( PowerControl7 & 0x0001 ); Wifi.SetPowerCnt( PowerControl7 & 0x0002 ); return;
 		}
 	}
 }

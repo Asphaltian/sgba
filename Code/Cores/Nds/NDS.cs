@@ -7,6 +7,7 @@ public sealed partial class NDS : IEmulatorCore
 	public GPU GPU { get; }
 	public GPU3D GPU3D { get; }
 	public SPU SPU { get; }
+	public Wifi Wifi { get; }
 
 	public byte[] MainRAM = new byte[NdsConstants.MainRamSize];
 	public byte[] SharedWRAM = new byte[NdsConstants.SharedWramSize];
@@ -37,6 +38,7 @@ public sealed partial class NDS : IEmulatorCore
 		GPU = new GPU( this );
 		GPU3D = new GPU3D( this );
 		SPU = new SPU( this, _audio );
+		Wifi = new Wifi( this );
 		_renderer3D = new ComputeRenderer3D( GPU3D, GPU );
 		_render2D_A = new ComputeRenderer2D( 0, GPU.GPU2D_A, GPU, GPU3D );
 		_render2D_B = new ComputeRenderer2D( 1, GPU.GPU2D_B, GPU, GPU3D );
@@ -78,6 +80,7 @@ public sealed partial class NDS : IEmulatorCore
 		ResetCart();
 		ResetCartSave();
 		ResetSpi();
+		Wifi.Reset();
 		ResetRtc();
 		GPU.Reset();
 		GPU3D.Reset();
