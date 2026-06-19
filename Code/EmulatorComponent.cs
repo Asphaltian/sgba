@@ -237,9 +237,46 @@ public sealed partial class EmulatorComponent : Component
 
 	public bool HasTouchscreen => _profile?.HasTouchscreen ?? false;
 
+	private const float CursorMouseWakeThreshold = 5f;
+	private const float CursorStickDeadzone = 0.05f;
+	private bool _cursorGamepadMode;
+
 	public void ApplyGameplayCursor()
 	{
-		Mouse.Visibility = HasTouchscreen ? MouseVisibility.Visible : MouseVisibility.Hidden;
+		if ( !HasTouchscreen )
+		{
+			Mouse.Visibility = MouseVisibility.Hidden;
+			return;
+		}
+
+		_cursorGamepadMode = false;
+		Mouse.Visibility = MouseVisibility.Visible;
+	}
+
+	private void UpdateGameplayCursor( InputButton[] buttons, float stickX, float stickY )
+	{
+		if ( !HasTouchscreen )
+			return;
+
+		float rsx = Input.GetAnalog( InputAnalog.RightStickX );
+		float rsy = Input.GetAnalog( InputAnalog.RightStickY );
+		bool stickActive =
+			Math.Abs( stickX ) > CursorStickDeadzone || Math.Abs( stickY ) > CursorStickDeadzone ||
+			Math.Abs( rsx ) > CursorStickDeadzone || Math.Abs( rsy ) > CursorStickDeadzone;
+		bool gamepadActive = stickActive || AnyButtonHeld( buttons, stickX, stickY );
+		bool mouseMoved = !stickActive && Mouse.Delta.Length > CursorMouseWakeThreshold;
+
+		if ( _cursorGamepadMode )
+		{
+			if ( mouseMoved )
+				_cursorGamepadMode = false;
+		}
+		else if ( gamepadActive )
+		{
+			_cursorGamepadMode = true;
+		}
+
+		Mouse.Visibility = _cursorGamepadMode ? MouseVisibility.Hidden : MouseVisibility.Visible;
 	}
 
 	private DisplayOptions CurrentDisplayOptions() => new( GamePreferences.ReproduceClassicFeel, GamePreferences.DisplayWithSmallScreen );
@@ -524,6 +561,8 @@ public sealed partial class EmulatorComponent : Component
 
 		float stickX = Input.GetAnalog( InputAnalog.LeftStickX );
 		float stickY = Input.GetAnalog( InputAnalog.LeftStickY );
+
+		UpdateGameplayCursor( buttons, stickX, stickY );
 
 		if ( _inputCooldown > 0 )
 		{
