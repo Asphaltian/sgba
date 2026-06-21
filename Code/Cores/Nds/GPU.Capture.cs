@@ -1,127 +1,238 @@
+using System.Numerics;
+
 namespace Emulotl.Nds;
 
 public sealed partial class GPU
 {
-	public uint CaptureCnt;
-	public bool CaptureEnable;
+	private const ushort CBFlag_IsCapture = 1 << 15;
+	private const ushort CBFlag_Complete = 1 << 14;
+	private const ushort CBFlag_Synced = 1 << 13;
 
-	private void DoCapture( uint line )
+	public ushort[] VRAMCaptureBlockFlags = new ushort[16];
+
+	public int[] VRAMCBF_ABG = new int[0x20];
+	public int[] VRAMCBF_AOBJ = new int[0x10];
+	public int[] VRAMCBF_BBG = new int[0x8];
+	public int[] VRAMCBF_BOBJ = new int[0x8];
+
+	private void ResetCapture()
 	{
-		uint captureCnt = CaptureCnt;
+		Array.Clear( VRAMCaptureBlockFlags );
+		Array.Fill( VRAMCBF_ABG, -1 );
+		Array.Fill( VRAMCBF_AOBJ, -1 );
+		Array.Fill( VRAMCBF_BBG, -1 );
+		Array.Fill( VRAMCBF_BOBJ, -1 );
+	}
 
-		uint sz = (captureCnt >> 20) & 0x3;
-		uint width, height;
-		if ( sz == 0 ) { width = 128; height = 128; }
-		else { width = 256; height = 64 * sz; }
+	private int GetUniqueBankCBF( uint mask, uint offset )
+	{
+		if ( mask == 0 || (mask & (mask - 1)) != 0 ) return -1;
+		if ( (mask & 0x1F0) != 0 ) return -1;
+		int num = BitOperations.TrailingZeroCount( mask );
+		offset = (offset >> 1) & 0x3;
+		return (num << 2) | (int)offset;
+	}
 
-		if ( line >= height )
-			return;
+	private void SetCBF( int[] cbf, uint[] map, int i )
+	{
+		cbf[i] = GetUniqueBankCBF( map[i], (uint)i );
+	}
 
-		uint dstbank = (captureCnt >> 16) & 0x3;
+	private void SetRangeCBF( int[] cbf, uint[] map, int based, int n )
+	{
+		for ( int i = 0; i < n; i++ )
+			cbf[based + i] = GetUniqueBankCBF( map[based + i], (uint)(based + i) );
+	}
+
+	private void VRAMCBFlagsSet( uint bank, uint block, ushort val )
+	{
+		int cb = (int)(bank << 2);
+		uint len = (uint)((val >> 4) & 0x3);
+		uint b = block;
+		for ( uint i = 0; i < len; i++ )
+		{
+			VRAMCaptureBlockFlags[cb + (int)b] = val;
+			b = (b + 1) & 0x3;
+		}
+	}
+
+	private void VRAMCBFlagsClear( uint bank, uint block )
+	{
+		int cb = (int)(bank << 2);
+		ushort flags = VRAMCaptureBlockFlags[cb + (int)block];
+		uint start = (uint)(flags & 0x3);
+		uint len = (uint)((flags >> 4) & 0x3);
+		uint b = start;
+		for ( uint i = 0; i < len; i++ )
+		{
+			VRAMCaptureBlockFlags[cb + (int)b] = 0;
+			b = (b + 1) & 0x3;
+		}
+	}
+
+	private void VRAMCBFlagsOr( uint bank, uint block, ushort val )
+	{
+		int cb = (int)(bank << 2);
+		ushort flags = VRAMCaptureBlockFlags[cb + (int)block];
+		uint start = (uint)(flags & 0x3);
+		uint len = (uint)((flags >> 4) & 0x3);
+		uint b = start;
+		for ( uint i = 0; i < len; i++ )
+		{
+			VRAMCaptureBlockFlags[cb + (int)b] |= val;
+			b = (b + 1) & 0x3;
+		}
+	}
+
+	public void CheckCaptureStart()
+	{
+		uint dstbank = (CaptureCnt >> 16) & 0x3;
 		if ( (VRAMMap_LCDC & (1u << (int)dstbank)) == 0 )
 			return;
 
-		byte[] dst = VRAM[(int)dstbank];
-		uint dstmask = VRAMMask[(int)dstbank];
-		uint dstword = ((((captureCnt >> 18) & 0x3) << 14) + (line * width)) & 0xFFFF;
+		uint dstoff = (CaptureCnt >> 18) & 0x3;
+		uint size = (CaptureCnt >> 20) & 0x3;
+		uint len = (size == 0) ? 1 : size;
 
-		uint[] srcA = GPU2D_A.Output2D;
-		bool srcA3D = (captureCnt & (1 << 24)) != 0;
-
-		byte[] srcBbank = null;
-		uint srcBword = 0;
-		uint srcBmask = 0;
-		if ( (captureCnt & (1 << 25)) == 0 )
+		int cb = (int)(dstbank << 2);
+		uint b = dstoff;
+		for ( uint i = 0; i < len; i++ )
 		{
-			uint dispcnt = GPU2D_A.DispCnt;
-			uint srcvram = (dispcnt >> 18) & 0x3;
-			if ( (VRAMMap_LCDC & (1u << (int)srcvram)) != 0 )
-			{
-				srcBbank = VRAM[(int)srcvram];
-				srcBmask = VRAMMask[(int)srcvram];
-				uint offset = line * 256;
-				if ( ((dispcnt >> 16) & 0x3) != 2 )
-					offset += ((captureCnt >> 26) & 0x3) << 14;
-				srcBword = offset & 0xFFFF;
-			}
+			ushort oldflags = VRAMCaptureBlockFlags[cb + (int)b];
+			b = (b + 1) & 0x3;
+
+			if ( (oldflags & CBFlag_IsCapture) == 0 )
+				continue;
+
+			uint oldstart = (uint)(oldflags & 0x3);
+			uint oldsize = (uint)((oldflags >> 6) & 0x3);
+			if ( oldstart == dstoff && oldsize == size )
+				continue;
+
+			NDS.Render2DA.SyncVRAMCapture( dstbank, oldstart, oldsize, (oldflags & CBFlag_Complete) != 0 );
+			VRAMCBFlagsClear( dstbank, oldstart );
 		}
 
-		uint mode = (captureCnt >> 29) & 0x3;
-		uint eva = captureCnt & 0x1F;
-		uint evb = (captureCnt >> 8) & 0x1F;
-		if ( eva > 16 ) eva = 16;
-		if ( evb > 16 ) evb = 16;
-
-		for ( uint i = 0; i < width; i++ )
-		{
-			ushort outc;
-
-			if ( mode == 0 )
-			{
-				outc = CaptureSrcA( srcA, srcA3D, i );
-			}
-			else if ( mode == 1 )
-			{
-				outc = CaptureSrcB( srcBbank, srcBword, srcBmask, i );
-			}
-			else
-			{
-				uint va = srcA[i];
-				uint rA = (va >> 1) & 0x1F;
-				uint gA = (va >> 9) & 0x1F;
-				uint bA = (va >> 17) & 0x1F;
-				uint aA = (va >> 24) != 0 ? 1u : 0u;
-
-				ushort vb = CaptureSrcB( srcBbank, srcBword, srcBmask, i );
-				uint rB = (uint)(vb & 0x1F);
-				uint gB = (uint)((vb >> 5) & 0x1F);
-				uint bB = (uint)((vb >> 10) & 0x1F);
-				uint aB = (uint)(vb >> 15);
-
-				uint rD = ((rA * aA * eva) + (rB * aB * evb) + 8) >> 4;
-				uint gD = ((gA * aA * eva) + (gB * aB * evb) + 8) >> 4;
-				uint bD = ((bA * aA * eva) + (bB * aB * evb) + 8) >> 4;
-				uint aD = (eva > 0 ? aA : 0) | (evb > 0 ? aB : 0);
-
-				if ( rD > 0x1F ) rD = 0x1F;
-				if ( gD > 0x1F ) gD = 0x1F;
-				if ( bD > 0x1F ) bD = 0x1F;
-
-				outc = (ushort)(rD | (gD << 5) | (bD << 10) | (aD << 15));
-			}
-
-			uint a = ((dstword + i) * 2) & dstmask;
-			dst[a] = (byte)outc;
-			dst[a + 1] = (byte)(outc >> 8);
-		}
+		ushort newval = (ushort)(CBFlag_IsCapture | dstoff | (dstbank << 2) | (len << 4) | (size << 6));
+		VRAMCBFlagsSet( dstbank, dstoff, newval );
+		NDS.Render2DA.AllocCapture( dstbank, dstoff, size );
 	}
 
-	private static ushort CaptureSrcA( uint[] srcA, bool is3D, uint i )
+	public void CheckCaptureEnd()
 	{
-		uint val = srcA[i];
-		uint r, g, b, alpha;
-		if ( is3D )
+		uint dstbank = (CaptureCnt >> 16) & 0x3;
+		uint dstoff = (CaptureCnt >> 18) & 0x3;
+		uint size = (CaptureCnt >> 20) & 0x3;
+
+		ushort flags = VRAMCaptureBlockFlags[(int)((dstbank << 2) | dstoff)];
+		if ( (flags & CBFlag_IsCapture) == 0 )
+			return;
+
+		uint oldstart = (uint)(flags & 0x3);
+		uint oldsize = (uint)((flags >> 6) & 0x3);
+		if ( dstoff != oldstart || size != oldsize )
+			return;
+
+		VRAMCBFlagsOr( dstbank, dstoff, CBFlag_Complete );
+	}
+
+	public void SyncVRAMCaptureBlock( uint block, bool write )
+	{
+		ushort flags = VRAMCaptureBlockFlags[(int)block];
+		if ( (flags & CBFlag_IsCapture) == 0 ) return;
+
+		uint bank = block >> 2;
+		uint start = (uint)(flags & 0x3);
+		uint len = (uint)((flags >> 6) & 0x3);
+
+		if ( (flags & CBFlag_Synced) != 0 )
 		{
-			r = (val >> 1) & 0x1F;
-			g = (val >> 9) & 0x1F;
-			b = (val >> 17) & 0x1F;
-			alpha = (val >> 24) != 0 ? 0x8000u : 0;
+			if ( write )
+				VRAMCBFlagsClear( bank, start );
+			return;
 		}
+
+		NDS.Render2DA.SyncVRAMCapture( bank, start, len, (flags & CBFlag_Complete) != 0 );
+
+		if ( write )
+			VRAMCBFlagsClear( bank, start );
 		else
-		{
-			r = (val >> 1) & 0x1F;
-			g = (val >> 9) & 0x1F;
-			b = (val >> 17) & 0x1F;
-			alpha = 0x8000u;
-		}
-		return (ushort)(r | (g << 5) | (b << 10) | alpha);
+			VRAMCBFlagsOr( bank, start, CBFlag_Synced );
 	}
 
-	private static ushort CaptureSrcB( byte[] bank, uint word, uint mask, uint i )
+	public void SyncAllVRAMCaptures()
 	{
-		if ( bank == null )
-			return 0;
-		uint a = ((word + i) * 2) & mask;
-		return (ushort)(bank[a] | (bank[a + 1] << 8));
+		for ( uint b = 0; b < 16; b++ )
+		{
+			ushort flags = VRAMCaptureBlockFlags[(int)b];
+			if ( (flags & CBFlag_IsCapture) == 0 )
+				continue;
+			if ( (flags & CBFlag_Synced) != 0 )
+				continue;
+
+			uint bank = b >> 2;
+			uint start = (uint)(flags & 0x3);
+			uint len = (uint)((flags >> 6) & 0x3);
+
+			NDS.Render2DA.SyncVRAMCapture( bank, start, len, (flags & CBFlag_Complete) != 0 );
+			VRAMCBFlagsClear( bank, start );
+		}
+	}
+
+	public int GetCaptureBlock_LCDC( uint offset )
+	{
+		ushort flags = VRAMCaptureBlockFlags[(int)(offset >> 15)];
+		if ( (flags & CBFlag_IsCapture) != 0 )
+			return (int)(((offset >> 15) & 0xC) | (uint)(flags & 0x3));
+		return -1;
+	}
+
+	private void GetCaptureInfo( int[] info, int[] cbf, int len )
+	{
+		for ( int b = 0; b < len; b++ )
+		{
+			int idx = cbf[b];
+			if ( idx < 0 )
+			{
+				info[b] = -1;
+				continue;
+			}
+
+			ushort flags = VRAMCaptureBlockFlags[idx];
+			if ( (flags & CBFlag_IsCapture) != 0 )
+				info[b] = flags & 0xF;
+			else
+				info[b] = -1;
+		}
+	}
+
+	public void GetCaptureInfo_ABG( int[] info ) => GetCaptureInfo( info, VRAMCBF_ABG, 32 );
+	public void GetCaptureInfo_AOBJ( int[] info ) => GetCaptureInfo( info, VRAMCBF_AOBJ, 16 );
+	public void GetCaptureInfo_BBG( int[] info ) => GetCaptureInfo( info, VRAMCBF_BBG, 8 );
+	public void GetCaptureInfo_BOBJ( int[] info ) => GetCaptureInfo( info, VRAMCBF_BOBJ, 8 );
+
+	public void GetCaptureInfo_Texture( int[] info )
+	{
+		for ( int b = 0; b < 16; b++ )
+		{
+			int bank = b >> 2;
+			int subblock = b & 0x3;
+			uint mask = VRAMMap_Texture[bank];
+			ushort cbf = 0;
+
+			if ( mask == (1 << 0) )
+				cbf = VRAMCaptureBlockFlags[(0 << 2) | subblock];
+			else if ( mask == (1 << 1) )
+				cbf = VRAMCaptureBlockFlags[(1 << 2) | subblock];
+			else if ( mask == (1 << 2) )
+				cbf = VRAMCaptureBlockFlags[(2 << 2) | subblock];
+			else if ( mask == (1 << 3) )
+				cbf = VRAMCaptureBlockFlags[(3 << 2) | subblock];
+
+			if ( (cbf & CBFlag_IsCapture) != 0 )
+				info[b] = cbf & 0xF;
+			else
+				info[b] = -1;
+		}
 	}
 }

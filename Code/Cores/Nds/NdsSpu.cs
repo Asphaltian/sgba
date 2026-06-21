@@ -402,7 +402,7 @@ public sealed class SPUChannel
 
 		if ( (type < 3) && (InterpType != AudioInterpolation.None) )
 		{
-			int samplepos = (int)(((Timer - TimerReload) * 0x100) / (0x10000 - TimerReload));
+			int samplepos = (int)((Timer - TimerReload) * 0x100 / (0x10000 - TimerReload));
 			if ( samplepos > 0xFF ) samplepos = 0xFF;
 
 			switch ( InterpType )
@@ -640,7 +640,7 @@ public sealed class SPU
 	{
 		for ( int i = 0; i < 0x100; i++ )
 		{
-			double ratio = (i * Math.PI) / 255.0;
+			double ratio = i * Math.PI / 255.0;
 			ratio = 1.0 - Math.Cos( ratio );
 			InterpCos[i] = (short)(ratio * 0x2000);
 		}

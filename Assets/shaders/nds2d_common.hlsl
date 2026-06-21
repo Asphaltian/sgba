@@ -10,7 +10,11 @@ struct sBGConfig
 	int TileOffset;
 	int MapOffset;
 	int Clamp;
-	int Pad;
+	int CapBlock;
+	int CapSize;
+	int CapYOffset;
+	int Pad0;
+	int Pad1;
 };
 
 struct sOAM
@@ -31,6 +35,8 @@ struct sOAM
 	int Rotscale;
 	int BGPrio;
 	int Mosaic;
+	int CapBlock;
+	int CapSize;
 };
 
 struct sScanline

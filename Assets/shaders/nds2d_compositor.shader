@@ -26,6 +26,8 @@ CS
 	StructuredBuffer<uint> VramDisplay < Attribute( "VramDisplay" ); >;
 
 	RWTexture2D<float4> OutputTex < Attribute( "OutputTex" ); >;
+	RWTexture2D<float4> CaptureSrcA < Attribute( "CaptureSrcA" ); >;
+	RWTexture2DArray<float4> CaptureOut256 < Attribute( "CaptureOut256" ); >;
 
 	int uScaleFactor < Attribute( "ScaleFactor" ); >;
 	int uBGPrio0 < Attribute( "BGPrio0" ); >;
@@ -45,6 +47,7 @@ CS
 	int uBrightFactor < Attribute( "BrightFactor" ); >;
 	int uScreenOff < Attribute( "ScreenOff" ); >;
 	int uDispMode < Attribute( "DispMode" ); >;
+	int uVramCap < Attribute( "VramCap" ); >;
 
 	static int MosaicX = 0;
 
@@ -185,7 +188,7 @@ CS
 		float4 layercol2 = BG23CalcAndFetch( 2, bgcoord, ln );
 		float4 layercol3 = BG23CalcAndFetch( 3, bgcoord, ln );
 		float4 layercol4 = ObjColorAt( coord );
-		int4 objflags = int4( ObjFlagsAt( coord ) * 255.0 );
+		int4 objflags = int4( ObjFlagsAt( coord ) * 255.0 + 0.5 );
 
 		int winmask = s.WinMask;
 		bool inside_win0;
@@ -223,7 +226,7 @@ CS
 				{
 					col2 = col1;
 					mask2 = mask1 << 8;
-					col1 = int4( lc * 255.0 ) >> int4( 2, 2, 2, 3 );
+					col1 = int4( lc * 255.0 + 0.5 ) >> int4( 2, 2, 2, 3 );
 					mask1 = (int)( 1u << (uint)bg );
 					specialcase = ( bg == 0 ) && ( uEnable3D != 0 );
 				}
@@ -233,7 +236,7 @@ CS
 			{
 				col2 = col1;
 				mask2 = mask1 << 8;
-				col1 = int4( layercol4 * 255.0 ) >> int4( 2, 2, 2, 3 );
+				col1 = int4( layercol4 * 255.0 + 0.5 ) >> int4( 2, 2, 2, 3 );
 				mask1 = ( 1 << 4 );
 				specialcase = ( objflags.r != 0 );
 			}
@@ -298,11 +301,21 @@ CS
 			col1 = ( ( col1 * eva ) + ( col2 * evb ) + 0x10 ) >> 5;
 		}
 
+		CaptureSrcA[id.xy] = float4( float3( col1.rgb << 2 ) / 255.0, 1.0 );
+
 		int3 c;
 		if ( uDispMode == 2 )
 		{
-			int vcol = (int)LoadU16( VramDisplay, ln * 256 + xpos );
-			c = int3( ( vcol & 0x1F ) << 1, ( ( vcol >> 5 ) & 0x1F ) << 1, ( ( vcol >> 10 ) & 0x1F ) << 1 );
+			if ( uVramCap >= 0 )
+			{
+				float4 cc = CaptureOut256[int3( (int)id.x, (int)id.y, uVramCap >> 2 )];
+				c = int3( cc.rgb * 63.0 + 0.5 );
+			}
+			else
+			{
+				int vcol = (int)LoadU16( VramDisplay, ln * 256 + xpos );
+				c = int3( ( vcol & 0x1F ) << 1, ( ( vcol >> 5 ) & 0x1F ) << 1, ( ( vcol >> 10 ) & 0x1F ) << 1 );
+			}
 		}
 		else
 		{

@@ -21,6 +21,8 @@ public sealed partial class ComputeRenderer3D
 	private readonly int[] _snapVarH = new int[MaxVariants];
 	private readonly bool[] _snapVarTexture = new bool[MaxVariants];
 	private readonly bool[] _snapVarShadow = new bool[MaxVariants];
+	private readonly int[] _snapVarCapture = new int[MaxVariants];
+	private readonly int[] _snapVarCapYOffset = new int[MaxVariants];
 
 	public void Snapshot()
 	{
@@ -88,6 +90,8 @@ public sealed partial class ComputeRenderer3D
 				Array.Copy( _varShadow, _snapVarShadow, numVariants );
 				Array.Copy( _varW, _snapVarW, numVariants );
 				Array.Copy( _varH, _snapVarH, numVariants );
+				Array.Copy( _varCapture, _snapVarCapture, numVariants );
+				Array.Copy( _varCapYOffset, _snapVarCapYOffset, numVariants );
 			}
 			if ( _texturesChanged )
 			{
@@ -141,6 +145,12 @@ public sealed partial class ComputeRenderer3D
 			cmd.Attributes.Set( "TileColor", _tileMemory[0] );
 			cmd.Attributes.Set( "TileDepth", _tileMemory[1] );
 			cmd.Attributes.Set( "TileAttr", _tileMemory[2] );
+			cmd.Attributes.Set( "uScale", _scaleFactor );
+			if ( _cap128 != null )
+			{
+				cmd.Attributes.Set( "CaptureOut128", _cap128 );
+				cmd.Attributes.Set( "CaptureOut256", _cap256 );
+			}
 			for ( int i = 0; i < numVariants; i++ )
 			{
 				cmd.Attributes.Set( "CurrentTexture", _snapVarBucket[i] == 0 ? _texBufSmall : _texBufLarge );
@@ -151,6 +161,8 @@ public sealed partial class ComputeRenderer3D
 				cmd.Attributes.Set( "CurVariant", i );
 				cmd.Attributes.Set( "TexWidth", _snapVarW[i] );
 				cmd.Attributes.Set( "TexHeight", _snapVarH[i] );
+				cmd.Attributes.Set( "uIsCapture", _snapVarCapture[i] );
+				cmd.Attributes.Set( "uCapYOffset", _snapVarCapYOffset[i] );
 				cmd.DispatchComputeIndirect( _csRaster, _indirectArgs, (uint)i );
 			}
 			cmd.UavBarrier( _tileMemory[0] );

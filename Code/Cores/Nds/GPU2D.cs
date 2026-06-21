@@ -98,8 +98,6 @@ public sealed partial class GPU2D
 		EVA = 16;
 		EVB = 0;
 		EVY = 0;
-
-		BindVramFlats();
 	}
 
 	public void SetEnabled( bool enabled ) => Enabled = enabled;
@@ -430,42 +428,5 @@ public sealed partial class GPU2D
 		else if ( line == Win0Coords[2] ) Win0Active |= 0x1;
 		if ( line == Win1Coords[3] ) Win1Active &= 0xFE;
 		else if ( line == Win1Coords[2] ) Win1Active |= 0x1;
-	}
-
-	public void CalculateWindowMask( byte[] windowMask, byte[] objWindow )
-	{
-		for ( int i = 0; i < 256; i++ )
-			windowMask[i] = WinCnt[2];
-
-		if ( (DispCnt & (1 << 15)) != 0 )
-		{
-			for ( int i = 0; i < 256; i++ )
-				if ( objWindow[i] != 0 )
-					windowMask[i] = WinCnt[3];
-		}
-
-		if ( (DispCnt & (1 << 14)) != 0 )
-		{
-			byte x1 = Win1Coords[0];
-			byte x2 = Win1Coords[1];
-			for ( int i = 0; i < 256; i++ )
-			{
-				if ( i == x2 ) Win1Active &= 0xFD;
-				else if ( i == x1 ) Win1Active |= 0x2;
-				if ( Win1Active == 0x3 ) windowMask[i] = WinCnt[1];
-			}
-		}
-
-		if ( (DispCnt & (1 << 13)) != 0 )
-		{
-			byte x1 = Win0Coords[0];
-			byte x2 = Win0Coords[1];
-			for ( int i = 0; i < 256; i++ )
-			{
-				if ( i == x2 ) Win0Active &= 0xFD;
-				else if ( i == x1 ) Win0Active |= 0x2;
-				if ( Win0Active == 0x3 ) windowMask[i] = WinCnt[0];
-			}
-		}
 	}
 }

@@ -4,6 +4,9 @@ public sealed partial class GPU
 {
 	private uint RdBank( int bank, uint addr, int bytes )
 	{
+		if ( bank < 4 )
+			SyncVRAMCaptureBlock( (uint)((bank << 2) | (int)((addr & VRAMMask[bank]) >> 15)), false );
+
 		byte[] m = VRAM[bank];
 		uint a = addr & VRAMMask[bank];
 		uint v = m[a];
@@ -14,6 +17,9 @@ public sealed partial class GPU
 
 	private void WrBank( int bank, uint addr, uint val, int bytes )
 	{
+		if ( bank < 4 )
+			SyncVRAMCaptureBlock( (uint)((bank << 2) | (int)((addr & VRAMMask[bank]) >> 15)), true );
+
 		if ( (TexBankMask & (1u << bank)) != 0 )
 			TexVRAMVersion++;
 

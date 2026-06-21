@@ -8,6 +8,7 @@ public sealed partial class ComputeRenderer2D
 	private ComputeShader _csSpritePre;
 	private ComputeShader _csSprite;
 	private ComputeShader _csCompositor;
+	private ComputeShader _csCapture;
 
 	private int _slot;
 
@@ -17,6 +18,7 @@ public sealed partial class ComputeRenderer2D
 		_csSpritePre = new ComputeShader( "shaders/nds2d_spritepre.shader" );
 		_csSprite = new ComputeShader( "shaders/nds2d_sprite.shader" );
 		_csCompositor = new ComputeShader( "shaders/nds2d_compositor.shader" );
+		_csCapture = new ComputeShader( "shaders/nds2d_capture.shader" );
 	}
 
 	private void DisposeShaders()
@@ -25,6 +27,7 @@ public sealed partial class ComputeRenderer2D
 		_csSpritePre = null;
 		_csSprite = null;
 		_csCompositor = null;
+		_csCapture = null;
 	}
 
 	private void UploadBuffers( int slot )
@@ -70,7 +73,47 @@ public sealed partial class ComputeRenderer2D
 		DoRenderSprites( cmd );
 		RenderScreen( cmd );
 
+		if ( _num == 0 && _snapCapOn[_slot] )
+			DoCapture( cmd );
+
 		return true;
+	}
+
+	private void DoCapture( CommandList cmd )
+	{
+		int s = _slot;
+		int width = _snapCapWidth[s];
+		int height = _snapCapHeight[s];
+		int capsize = _snapCapSize[s];
+		int dstblock = _snapCapBank[s];
+		int dstoffset = _snapCapOffset[s];
+		int layer = capsize == 0 ? ((dstblock << 2) | dstoffset) : dstblock;
+		int bufferHeight = capsize == 0 ? 128 : 256;
+
+		cmd.UavBarrier( _captureSrcA );
+
+		if ( _snapCapSrcBEn[s] != 0 )
+			_captureSrcB.SetData<uint>( _snapCapSrcB[s] );
+
+		cmd.Attributes.Set( "SrcA2D", _captureSrcA );
+		cmd.Attributes.Set( "SrcA3D", _output3D ?? _captureSrcA );
+		cmd.Attributes.Set( "SrcB", _captureSrcB );
+		cmd.Attributes.Set( "CaptureOut128", CaptureOutput128Tex );
+		cmd.Attributes.Set( "CaptureOut256", CaptureOutput256Tex );
+		cmd.Attributes.Set( "uSrcA3D", _snapCapSrcA3D[s] );
+		cmd.Attributes.Set( "uSrcBEnable", _snapCapSrcBEn[s] );
+		cmd.Attributes.Set( "uMode", _snapCapMode[s] );
+		cmd.Attributes.Set( "uEVA", _snapCapEVA[s] );
+		cmd.Attributes.Set( "uEVB", _snapCapEVB[s] );
+		cmd.Attributes.Set( "uDstWidth", width );
+		cmd.Attributes.Set( "uDstHeight", height );
+		cmd.Attributes.Set( "uCapSize", capsize );
+		cmd.Attributes.Set( "uDstLayer", layer );
+		cmd.Attributes.Set( "uDstOffset", capsize == 0 ? 0 : dstoffset );
+		cmd.Attributes.Set( "uBufferHeight", bufferHeight );
+		cmd.Attributes.Set( "uScale", _scale );
+		cmd.DispatchCompute( _csCapture, width * _scale, height * _scale, 1 );
+		cmd.UavBarrier( capsize == 0 ? CaptureOutput128Tex : CaptureOutput256Tex );
 	}
 
 	private void PrerenderLayer( CommandList cmd, int layer )
@@ -85,6 +128,13 @@ public sealed partial class ComputeRenderer2D
 		cmd.Attributes.Set( "OutputLayer", _bgLayer[layer] );
 		cmd.Attributes.Set( "VRAMMask", _bgVramMask );
 		cmd.Attributes.Set( "CurBG", layer );
+		cmd.Attributes.Set( "uScale", _scale );
+		Texture cap128 = Cap128;
+		if ( cap128 != null )
+		{
+			cmd.Attributes.Set( "CaptureOut128", cap128 );
+			cmd.Attributes.Set( "CaptureOut256", Cap256 );
+		}
 		cmd.DispatchCompute( _csLayerPre, bg.SizeX, bg.SizeY, 1 );
 		cmd.UavBarrier( _bgLayer[layer] );
 	}
@@ -97,6 +147,13 @@ public sealed partial class ComputeRenderer2D
 		cmd.Attributes.Set( "OutputAtlas", _spriteAtlas );
 		cmd.Attributes.Set( "VRAMMask", _objVramMask );
 		cmd.Attributes.Set( "NumSprites", _snapNumSprites[_slot] );
+		cmd.Attributes.Set( "uScale", _scale );
+		Texture cap128 = Cap128;
+		if ( cap128 != null )
+		{
+			cmd.Attributes.Set( "CaptureOut128", cap128 );
+			cmd.Attributes.Set( "CaptureOut256", Cap256 );
+		}
 		cmd.DispatchCompute( _csSpritePre, AtlasW, AtlasH, 1 );
 		cmd.UavBarrier( _spriteAtlas );
 	}
@@ -130,6 +187,7 @@ public sealed partial class ComputeRenderer2D
 		Texture target = _renderTarget ?? _output;
 		Texture bg0 = (comp.Enable3D != 0 && _output3D != null) ? _output3D : _bgLayer[0];
 
+		cmd.Attributes.Set( "CaptureSrcA", _captureSrcA );
 		cmd.Attributes.Set( "BGLayer0", bg0 );
 		cmd.Attributes.Set( "BGLayer1", _bgLayer[1] );
 		cmd.Attributes.Set( "BGLayer2", _bgLayer[2] );
@@ -141,6 +199,9 @@ public sealed partial class ComputeRenderer2D
 		cmd.Attributes.Set( "MosaicTable", _mosaicBuf );
 		cmd.Attributes.Set( "VramDisplay", _vramDisplay );
 		cmd.Attributes.Set( "DispMode", _snapDispMode[_slot] );
+		cmd.Attributes.Set( "VramCap", _snapVramCap[_slot] );
+		if ( Cap256 != null )
+			cmd.Attributes.Set( "CaptureOut256", Cap256 );
 		cmd.Attributes.Set( "OutputTex", target );
 		cmd.Attributes.Set( "ScaleFactor", _scale );
 		cmd.Attributes.Set( "BGPrio0", comp.BGPrio0 );

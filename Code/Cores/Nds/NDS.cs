@@ -44,6 +44,8 @@ public sealed partial class NDS : IEmulatorCore
 		_render2D_B = new ComputeRenderer2D( 1, GPU.GPU2D_B, GPU, GPU3D );
 		_render2D_A.SetRenderer3D( _renderer3D );
 		_render2D_B.SetRenderer3D( _renderer3D );
+		_render2D_B.SetCaptureOwner( _render2D_A );
+		_renderer3D.SetCaptureSource( _render2D_A );
 		_topScreen = new NdsScreen( _render2D_B, _renderer3D );
 		_bottomScreen = new NdsScreen( _render2D_A, _renderer3D );
 		_screens = [_topScreen, _bottomScreen];

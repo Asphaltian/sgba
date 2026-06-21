@@ -12,7 +12,11 @@ public struct sBGConfig
 	public int TileOffset;
 	public int MapOffset;
 	public int Clamp;
-	public int Pad;
+	public int CapBlock;
+	public int CapSize;
+	public int CapYOffset;
+	public int Pad0;
+	public int Pad1;
 }
 
 [StructLayout( LayoutKind.Sequential )]
@@ -34,6 +38,8 @@ public struct sOAM
 	public int Rotscale;
 	public int BGPrio;
 	public int Mosaic;
+	public int CapBlock;
+	public int CapSize;
 }
 
 [StructLayout( LayoutKind.Sequential )]

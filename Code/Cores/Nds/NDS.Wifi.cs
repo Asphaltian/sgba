@@ -469,7 +469,7 @@ public sealed class Wifi
 
 		if ( (reqflags & 2) != 0 )
 		{
-			IOPORT( W_PowerState ) |= (1 << 8);
+			IOPORT( W_PowerState ) |= 1 << 8;
 			if ( ((curflags & 2) == 0) && (USUntilPowerOn == 0) )
 			{
 				USUntilPowerOn = -2048;
@@ -480,7 +480,7 @@ public sealed class Wifi
 		{
 			IOPORT( W_PowerState ) &= unchecked((ushort)~(1 << 0));
 			IOPORT( W_PowerState ) &= unchecked((ushort)~(1 << 8));
-			IOPORT( W_PowerState ) |= (1 << 9);
+			IOPORT( W_PowerState ) |= 1 << 9;
 			USUntilPowerOn = 0;
 		}
 	}
@@ -1387,7 +1387,7 @@ public sealed class Wifi
 		if ( addr >= 0x2000 && addr < 0x4000 )
 			return 0xFFFF;
 
-		bool activeread = (addr < 0x1000);
+		bool activeread = addr < 0x1000;
 
 		switch ( addr )
 		{
@@ -1551,7 +1551,7 @@ public sealed class Wifi
 				if ( (IOPORT( W_PowerTX ) & (1 << 1)) != 0 )
 				{
 					if ( (val & 0x7) == 1 )
-						IOPORT( W_PowerDownCtrl ) |= (1 << 1);
+						IOPORT( W_PowerDownCtrl ) |= 1 << 1;
 					else if ( (val & 0x7) == 2 )
 						IOPORT( W_PowerDownCtrl ) = 3;
 
@@ -1597,7 +1597,7 @@ public sealed class Wifi
 				if ( (val & (1 << 1)) != 0 )
 				{
 					if ( (IOPORT( W_ModeWEP ) & 0x7) == 1 )
-						IOPORT( W_PowerDownCtrl ) |= (1 << 1);
+						IOPORT( W_PowerDownCtrl ) |= 1 << 1;
 					else if ( (IOPORT( W_ModeWEP ) & 0x7) == 2 )
 						IOPORT( W_PowerDownCtrl ) = 3;
 
@@ -1633,7 +1633,7 @@ public sealed class Wifi
 				if ( (IOPORT( W_PowerTX ) & (1 << 1)) != 0 )
 				{
 					if ( (IOPORT( W_ModeWEP ) & 0x7) == 1 )
-						IOPORT( W_PowerDownCtrl ) |= (1 << 1);
+						IOPORT( W_PowerDownCtrl ) |= 1 << 1;
 					else if ( (IOPORT( W_ModeWEP ) & 0x7) == 2 )
 						IOPORT( W_PowerDownCtrl ) = 3;
 				}

@@ -35,9 +35,14 @@ CS
 
 	#if D_TEXTURE
 	StructuredBuffer<uint> CurrentTexture < Attribute( "CurrentTexture" ); >;
+	RWTexture2DArray<float4> CaptureOut128 < Attribute( "CaptureOut128" ); >;
+	RWTexture2DArray<float4> CaptureOut256 < Attribute( "CaptureOut256" ); >;
 	int TexWidth < Attribute( "TexWidth" ); >;
 	int TexHeight < Attribute( "TexHeight" ); >;
 	int TexStride < Attribute( "TexStride" ); >;
+	int uIsCapture < Attribute( "uIsCapture" ); >;
+	int uCapYOffset < Attribute( "uCapYOffset" ); >;
+	int uScale < Attribute( "uScale" ); >;
 	#endif
 
 	static const uint SortedWorkOffsetStart = 1024u;
@@ -80,180 +85,198 @@ CS
 		uint descY = WorkDesc[sortedBase * 2u + 1u];
 
 		Polygon polygon = RenderPolygons[descY & 0x7FFu];
-		int2 position = int2( int( descX & 0xFFFFu ), int( descX >> 16 ) ) + int2( localId.xy );
-		int tileOffset = int( (descY >> 11) & 0x1FFFFFu ) * TileSize * TileSize + TileSize * int( localId.y ) + int( localId.x );
+		int2 tilePos = int2( int( descX & 0xFFFFu ), int( descX >> 16 ) );
+		int tileIdx = int( (descY >> 11) & 0x1FFFFFu );
 
-		uint color = 0u;
-		if ( position.y >= polygon.YTop && position.y < polygon.YBot )
+		for ( int sy = 0; sy < TileSize; sy += 8 )
+		for ( int sx = 0; sx < TileSize; sx += 8 )
 		{
-			XSpanSetup xspan = XSpanSetups[polygon.FirstXSpan + (position.y - polygon.YTop)];
-
-			bool insideLeftEdge = position.x < xspan.InsideStart;
-			bool insideRightEdge = position.x >= xspan.InsideEnd;
-			bool insidePolygonInside = !insideLeftEdge && !insideRightEdge;
-
-			if ( position.x >= xspan.X0 && position.x < xspan.X1
-				&& ((insideLeftEdge && (xspan.Flags & XSpanSetup_FillLeft) != 0u)
-					|| (insideRightEdge && (xspan.Flags & XSpanSetup_FillRight) != 0u)
-					|| (insidePolygonInside && (xspan.Flags & XSpanSetup_FillInside) != 0u)) )
+			int2 lp = int2( int( localId.x ) + sx, int( localId.y ) + sy );
+			int2 position = tilePos + lp;
+			int tileOffset = tileIdx * TileSize * TileSize + TileSize * lp.y + lp.x;
+			uint color = 0u;
+			if ( position.y >= polygon.YTop && position.y < polygon.YBot )
 			{
-				uint attr = 0u;
-				if ( position.y == polygon.YTop )
-					attr |= 0x4u;
-				else if ( position.y == polygon.YBot - 1 )
-					attr |= 0x8u;
+				XSpanSetup xspan = XSpanSetups[polygon.FirstXSpan + (position.y - polygon.YTop)];
 
-				if ( insideLeftEdge )
+				bool insideLeftEdge = position.x < xspan.InsideStart;
+				bool insideRightEdge = position.x >= xspan.InsideEnd;
+				bool insidePolygonInside = !insideLeftEdge && !insideRightEdge;
+
+				if ( position.x >= xspan.X0 && position.x < xspan.X1
+					&& ((insideLeftEdge && (xspan.Flags & XSpanSetup_FillLeft) != 0u)
+						|| (insideRightEdge && (xspan.Flags & XSpanSetup_FillRight) != 0u)
+						|| (insidePolygonInside && (xspan.Flags & XSpanSetup_FillInside) != 0u)) )
 				{
-					attr |= 0x1u;
-					int cov = xspan.EdgeCovL;
-					if ( cov < 0 )
+					uint attr = 0u;
+					if ( position.y == polygon.YTop )
+						attr |= 0x4u;
+					else if ( position.y == polygon.YBot - 1 )
+						attr |= 0x8u;
+
+					if ( insideLeftEdge )
 					{
-						int xcov = xspan.CovLInitial + (xspan.EdgeCovL & 0x3FF) * (position.x - xspan.X0);
-						cov = min( xcov >> 5, 31 );
+						attr |= 0x1u;
+						int cov = xspan.EdgeCovL;
+						if ( cov < 0 )
+						{
+							int xcov = xspan.CovLInitial + (xspan.EdgeCovL & 0x3FF) * (position.x - xspan.X0);
+							cov = min( xcov >> 5, 31 );
+						}
+						attr |= uint( cov ) << 8;
 					}
-					attr |= uint( cov ) << 8;
-				}
-				else if ( insideRightEdge )
-				{
-					attr |= 0x2u;
-					int cov = xspan.EdgeCovR;
-					if ( cov < 0 )
+					else if ( insideRightEdge )
 					{
-						int xcov = xspan.CovRInitial + (xspan.EdgeCovR & 0x3FF) * (position.x - xspan.InsideEnd);
-						cov = max( 0x1F - (xcov >> 5), 0 );
+						attr |= 0x2u;
+						int cov = xspan.EdgeCovR;
+						if ( cov < 0 )
+						{
+							int xcov = xspan.CovRInitial + (xspan.EdgeCovR & 0x3FF) * (position.x - xspan.InsideEnd);
+							cov = max( 0x1F - (xcov >> 5), 0 );
+						}
+						attr |= uint( cov ) << 8;
 					}
-					attr |= uint( cov ) << 8;
-				}
 
-				uint z;
-				int u;
-				int v;
-				int vr;
-				int vg;
-				int vb;
+					uint z;
+					int u;
+					int v;
+					int vr;
+					int vg;
+					int vb;
 
-				if ( xspan.X0 == xspan.X1 )
-				{
-					z = uint( xspan.Z0 );
-					u = xspan.TexcoordU0;
-					v = xspan.TexcoordV0;
-					vr = xspan.ColorR0;
-					vg = xspan.ColorG0;
-					vb = xspan.ColorB0;
-				}
-				else
-				{
-					int ifactor = CalcYFactorX( xspan, position.x );
-					int idiff = xspan.X1 - xspan.X0;
-					int i = position.x - xspan.X0;
-
-					#if D_WBUFFER
-						z = InterpolateZWBuffer( xspan.Z0, xspan.Z1, ifactor, true );
-					#else
-						z = InterpolateZZBuffer( xspan.Z0, xspan.Z1, i, xspan.XRecip, idiff, false );
-					#endif
-
-					if ( (xspan.Flags & XSpanSetup_Linear) == 0u )
+					if ( xspan.X0 == xspan.X1 )
 					{
-						u = InterpolateAttrPersp( xspan.TexcoordU0, xspan.TexcoordU1, ifactor );
-						v = InterpolateAttrPersp( xspan.TexcoordV0, xspan.TexcoordV1, ifactor );
-						vr = InterpolateAttrPersp( xspan.ColorR0, xspan.ColorR1, ifactor );
-						vg = InterpolateAttrPersp( xspan.ColorG0, xspan.ColorG1, ifactor );
-						vb = InterpolateAttrPersp( xspan.ColorB0, xspan.ColorB1, ifactor );
+						z = uint( xspan.Z0 );
+						u = xspan.TexcoordU0;
+						v = xspan.TexcoordV0;
+						vr = xspan.ColorR0;
+						vg = xspan.ColorG0;
+						vb = xspan.ColorB0;
 					}
 					else
 					{
-						u = InterpolateAttrLinear( xspan.TexcoordU0, xspan.TexcoordU1, i, xspan.XRecip, idiff, true );
-						v = InterpolateAttrLinear( xspan.TexcoordV0, xspan.TexcoordV1, i, xspan.XRecip, idiff, true );
-						vr = InterpolateAttrLinear( xspan.ColorR0, xspan.ColorR1, i, xspan.XRecip, idiff, true );
-						vg = InterpolateAttrLinear( xspan.ColorG0, xspan.ColorG1, i, xspan.XRecip, idiff, true );
-						vb = InterpolateAttrLinear( xspan.ColorB0, xspan.ColorB1, i, xspan.XRecip, idiff, true );
-					}
-				}
+						int ifactor = CalcYFactorX( xspan, position.x );
+						int idiff = xspan.X1 - xspan.X0;
+						int i = position.x - xspan.X0;
 
-				#if D_SHADOWMASK
-					color = 0xFFFFFFFFu;
-					TileDepth[tileOffset] = z;
-				#else
-					vr >>= 3;
-					vg >>= 3;
-					vb >>= 3;
-
-					uint r;
-					uint g;
-					uint b;
-					uint a = 0u;
-					uint polyalpha = (polygon.Attr >> 16) & 0x1Fu;
-
-					#if D_BLEND == 2
-						uint tooncolorM = MetaUniform[4u + uint( vr >> 1 ) * 4u];
-						vr = int( tooncolorM & 0xFFu );
-						vg = int( (tooncolorM >> 8) & 0xFFu );
-						vb = int( (tooncolorM >> 16) & 0xFFu );
-					#endif
-					#if D_BLEND == 3
-						vg = vr;
-						vb = vr;
-					#endif
-
-					#if !D_TEXTURE
-						a = polyalpha;
-					#endif
-					r = uint( vr );
-					g = uint( vg );
-					b = uint( vb );
-
-					#if D_TEXTURE
-						int2 texel = int2( u, v ) >> 4;
-						texel.x = WrapCoord( texel.x, TexWidth, ((polygon.TexParam >> 16) & 1u) != 0u, ((polygon.TexParam >> 18) & 1u) != 0u );
-						texel.y = WrapCoord( texel.y, TexHeight, ((polygon.TexParam >> 17) & 1u) != 0u, ((polygon.TexParam >> 19) & 1u) != 0u );
-						uint packed = CurrentTexture[int( polygon.TextureLayer ) * TexStride * TexStride + texel.y * TexStride + texel.x];
-						uint4 texcolor = uint4( packed & 0xFFu, (packed >> 8) & 0xFFu, (packed >> 16) & 0xFFu, (packed >> 24) & 0xFFu );
-
-						#if D_BLEND == 1
-							if ( texcolor.a == 31u )
-							{
-								r = texcolor.r;
-								g = texcolor.g;
-								b = texcolor.b;
-							}
-							else if ( texcolor.a > 0u )
-							{
-								r = ((texcolor.r * texcolor.a) + (uint( vr ) * (31u - texcolor.a))) >> 5;
-								g = ((texcolor.g * texcolor.a) + (uint( vg ) * (31u - texcolor.a))) >> 5;
-								b = ((texcolor.b * texcolor.a) + (uint( vb ) * (31u - texcolor.a))) >> 5;
-							}
-							a = polyalpha;
+						#if D_WBUFFER
+							z = InterpolateZWBuffer( xspan.Z0, xspan.Z1, ifactor, true );
 						#else
-							r = ((texcolor.r + 1u) * (uint( vr ) + 1u) - 1u) >> 6;
-							g = ((texcolor.g + 1u) * (uint( vg ) + 1u) - 1u) >> 6;
-							b = ((texcolor.b + 1u) * (uint( vb ) + 1u) - 1u) >> 6;
-							a = ((texcolor.a + 1u) * (polyalpha + 1u) - 1u) >> 5;
+							z = InterpolateZZBuffer( xspan.Z0, xspan.Z1, i, xspan.XRecip, idiff, false );
 						#endif
-					#endif
 
-					#if D_BLEND == 3
-						uint tooncolorH = MetaUniform[4u + uint( vr >> 1 ) * 4u];
-						r = min( r + (tooncolorH & 0xFFu), 63u );
-						g = min( g + ((tooncolorH >> 8) & 0xFFu), 63u );
-						b = min( b + ((tooncolorH >> 16) & 0xFFu), 63u );
-					#endif
-
-					if ( polyalpha == 0u )
-						a = 31u;
-
-					uint alphaRef = MetaUniform[2];
-					if ( a > alphaRef )
-					{
-						color = r | (g << 8) | (b << 16) | (a << 24);
-						TileDepth[tileOffset] = z;
-						TileAttr[tileOffset] = attr;
+						if ( (xspan.Flags & XSpanSetup_Linear) == 0u )
+						{
+							u = InterpolateAttrPersp( xspan.TexcoordU0, xspan.TexcoordU1, ifactor );
+							v = InterpolateAttrPersp( xspan.TexcoordV0, xspan.TexcoordV1, ifactor );
+							vr = InterpolateAttrPersp( xspan.ColorR0, xspan.ColorR1, ifactor );
+							vg = InterpolateAttrPersp( xspan.ColorG0, xspan.ColorG1, ifactor );
+							vb = InterpolateAttrPersp( xspan.ColorB0, xspan.ColorB1, ifactor );
+						}
+						else
+						{
+							u = InterpolateAttrLinear( xspan.TexcoordU0, xspan.TexcoordU1, i, xspan.XRecip, idiff, true );
+							v = InterpolateAttrLinear( xspan.TexcoordV0, xspan.TexcoordV1, i, xspan.XRecip, idiff, true );
+							vr = InterpolateAttrLinear( xspan.ColorR0, xspan.ColorR1, i, xspan.XRecip, idiff, true );
+							vg = InterpolateAttrLinear( xspan.ColorG0, xspan.ColorG1, i, xspan.XRecip, idiff, true );
+							vb = InterpolateAttrLinear( xspan.ColorB0, xspan.ColorB1, i, xspan.XRecip, idiff, true );
+						}
 					}
-				#endif
-			}
-		}
 
-		TileColor[tileOffset] = color;
+					#if D_SHADOWMASK
+						color = 0xFFFFFFFFu;
+						TileDepth[tileOffset] = z;
+					#else
+						vr >>= 3;
+						vg >>= 3;
+						vb >>= 3;
+
+						uint r;
+						uint g;
+						uint b;
+						uint a = 0u;
+						uint polyalpha = (polygon.Attr >> 16) & 0x1Fu;
+
+						#if D_BLEND == 2
+							uint tooncolorM = MetaUniform[4u + uint( vr >> 1 ) * 4u];
+							vr = int( tooncolorM & 0xFFu );
+							vg = int( (tooncolorM >> 8) & 0xFFu );
+							vb = int( (tooncolorM >> 16) & 0xFFu );
+						#endif
+						#if D_BLEND == 3
+							vg = vr;
+							vb = vr;
+						#endif
+
+						#if !D_TEXTURE
+							a = polyalpha;
+						#endif
+						r = uint( vr );
+						g = uint( vg );
+						b = uint( vb );
+
+						#if D_TEXTURE
+							int2 texel = int2( u, v ) >> 4;
+							texel.x = WrapCoord( texel.x, TexWidth, ((polygon.TexParam >> 16) & 1u) != 0u, ((polygon.TexParam >> 18) & 1u) != 0u );
+							texel.y = WrapCoord( texel.y, TexHeight, ((polygon.TexParam >> 17) & 1u) != 0u, ((polygon.TexParam >> 19) & 1u) != 0u );
+							uint4 texcolor;
+							if ( uIsCapture != 0 )
+							{
+								int cx = texel.x * uScale;
+								int cy = ( texel.y + uCapYOffset ) * uScale;
+								float4 cc = uIsCapture == 1 ? CaptureOut128[int3( cx, cy, int( polygon.TextureLayer ) )] : CaptureOut256[int3( cx, cy, int( polygon.TextureLayer ) )];
+								texcolor = uint4( uint( cc.r * 63.0 + 0.5 ), uint( cc.g * 63.0 + 0.5 ), uint( cc.b * 63.0 + 0.5 ), cc.a > 0.0 ? 31u : 0u );
+							}
+							else
+							{
+								uint packed = CurrentTexture[int( polygon.TextureLayer ) * TexStride * TexStride + texel.y * TexStride + texel.x];
+								texcolor = uint4( packed & 0xFFu, (packed >> 8) & 0xFFu, (packed >> 16) & 0xFFu, (packed >> 24) & 0xFFu );
+							}
+
+							#if D_BLEND == 1
+								if ( texcolor.a == 31u )
+								{
+									r = texcolor.r;
+									g = texcolor.g;
+									b = texcolor.b;
+								}
+								else if ( texcolor.a > 0u )
+								{
+									r = ((texcolor.r * texcolor.a) + (uint( vr ) * (31u - texcolor.a))) >> 5;
+									g = ((texcolor.g * texcolor.a) + (uint( vg ) * (31u - texcolor.a))) >> 5;
+									b = ((texcolor.b * texcolor.a) + (uint( vb ) * (31u - texcolor.a))) >> 5;
+								}
+								a = polyalpha;
+							#else
+								r = ((texcolor.r + 1u) * (uint( vr ) + 1u) - 1u) >> 6;
+								g = ((texcolor.g + 1u) * (uint( vg ) + 1u) - 1u) >> 6;
+								b = ((texcolor.b + 1u) * (uint( vb ) + 1u) - 1u) >> 6;
+								a = ((texcolor.a + 1u) * (polyalpha + 1u) - 1u) >> 5;
+							#endif
+						#endif
+
+						#if D_BLEND == 3
+							uint tooncolorH = MetaUniform[4u + uint( vr >> 1 ) * 4u];
+							r = min( r + (tooncolorH & 0xFFu), 63u );
+							g = min( g + ((tooncolorH >> 8) & 0xFFu), 63u );
+							b = min( b + ((tooncolorH >> 16) & 0xFFu), 63u );
+						#endif
+
+						if ( polyalpha == 0u )
+							a = 31u;
+
+						uint alphaRef = MetaUniform[2];
+						if ( a > alphaRef )
+						{
+							color = r | (g << 8) | (b << 16) | (a << 24);
+							TileDepth[tileOffset] = z;
+							TileAttr[tileOffset] = attr;
+						}
+					#endif
+				}
+			}
+
+			TileColor[tileOffset] = color;
+		}
 	}
 }

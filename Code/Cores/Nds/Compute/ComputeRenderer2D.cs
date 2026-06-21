@@ -44,6 +44,94 @@ public sealed partial class ComputeRenderer2D
 	private Texture _objFlags;
 	private Texture _output;
 
+	private Texture _captureSrcA;
+	public Texture CaptureOutput128Tex;
+	public Texture CaptureOutput256Tex;
+	private GpuBuffer<uint> _captureSrcB;
+
+	private ComputeRenderer2D _captureOwner;
+	public void SetCaptureOwner( ComputeRenderer2D o ) => _captureOwner = o;
+	private Texture Cap128 => CaptureOutput128Tex ?? _captureOwner?.CaptureOutput128Tex;
+	private Texture Cap256 => CaptureOutput256Tex ?? _captureOwner?.CaptureOutput256Tex;
+
+	public void AllocCapture( uint bank, uint start, uint len ) { }
+
+	private byte[] _syncBuf;
+
+	public void SyncVRAMCapture( uint bank, uint start, uint len, bool complete )
+	{
+		if ( CaptureOutput128Tex == null )
+			return;
+
+		byte[] vram = _gpu.VRAM[(int)bank];
+
+		if ( len == 0 )
+		{
+			int layer = (int)((bank << 2) | start);
+			ReadCaptureToVram( CaptureOutput128Tex, layer, 0, 128, 128, vram, (int)(start * 0x8000) );
+		}
+		else
+		{
+			int layer = (int)bank;
+			uint pos = start;
+			for ( uint i = 0; i < len; )
+			{
+				uint end = pos + len;
+				if ( end > 4 ) end = 4;
+				int rows = (int)((end - pos) * 64);
+				ReadCaptureToVram( CaptureOutput256Tex, layer, (int)(pos * 64), 256, rows, vram, (int)(pos * 0x8000) );
+				i += end - pos;
+				pos = (pos + (end - pos)) & 3;
+			}
+		}
+	}
+
+	private void ReadCaptureToVram( Texture tex, int layer, int nativeY, int nativeW, int nativeH, byte[] vram, int vramOffset )
+	{
+		int hw = nativeW * _scale;
+		int hh = nativeH * _scale;
+		int needed = hw * hh * 4;
+		if ( _syncBuf == null || _syncBuf.Length < needed )
+			_syncBuf = new byte[needed];
+
+		tex.GetPixels( (0, nativeY * _scale, hw, hh), layer, 0, _syncBuf.AsSpan(), ImageFormat.RGBA8888 );
+
+		int stride = nativeW * 2;
+		for ( int y = 0; y < nativeH; y++ )
+		{
+			float fy = (y + 0.5f) * _scale - 0.5f;
+			int y0 = (int)fy;
+			float wy = fy - y0;
+			int y1 = y0 + 1; if ( y1 >= hh ) y1 = hh - 1;
+
+			for ( int x = 0; x < nativeW; x++ )
+			{
+				float fx = (x + 0.5f) * _scale - 0.5f;
+				int x0 = (int)fx;
+				float wx = fx - x0;
+				int x1 = x0 + 1; if ( x1 >= hw ) x1 = hw - 1;
+
+				int i00 = (y0 * hw + x0) * 4, i10 = (y0 * hw + x1) * 4, i01 = (y1 * hw + x0) * 4, i11 = (y1 * hw + x1) * 4;
+				int r = BilinearByte( i00, i10, i01, i11, 0, wx, wy ) >> 3;
+				int g = BilinearByte( i00, i10, i01, i11, 1, wx, wy ) >> 3;
+				int b = BilinearByte( i00, i10, i01, i11, 2, wx, wy ) >> 3;
+				int a = BilinearByte( i00, i10, i01, i11, 3, wx, wy ) > 0 ? 1 : 0;
+
+				int col = r | (g << 5) | (b << 10) | (a << 15);
+				int dst = (vramOffset + y * stride + x * 2) & 0x1FFFF;
+				vram[dst] = (byte)col;
+				vram[dst + 1] = (byte)(col >> 8);
+			}
+		}
+	}
+
+	private int BilinearByte( int i00, int i10, int i01, int i11, int c, float wx, float wy )
+	{
+		float top = _syncBuf[i00 + c] * (1.0f - wx) + _syncBuf[i10 + c] * wx;
+		float bot = _syncBuf[i01 + c] * (1.0f - wx) + _syncBuf[i11 + c] * wx;
+		return (int)(top * (1.0f - wy) + bot * wy);
+	}
+
 	private Texture _output3D;
 	public void SetOutput3D( Texture tex ) => _output3D = tex;
 
@@ -104,6 +192,14 @@ public sealed partial class ComputeRenderer2D
 		_objFlags = MakeUav( ow, oh );
 		_output = MakeUav( ow, oh );
 
+		_captureSrcA = MakeUav( ow, oh );
+		if ( _num == 0 )
+		{
+			CaptureOutput128Tex = MakeUavArray( 128 * _scale, 128 * _scale, 16 );
+			CaptureOutput256Tex = MakeUavArray( 256 * _scale, 256 * _scale, 4 );
+			_captureSrcB = new GpuBuffer<uint>( ScreenW * ScreenH );
+		}
+
 		InitShaders();
 		RenderCommandList = new CommandList( $"NDS2D_{_num}" );
 		GpuReady = true;
@@ -116,6 +212,13 @@ public sealed partial class ComputeRenderer2D
 			.WithFormat( ImageFormat.RGBA8888 )
 			.WithUAVBinding()
 			.Create();
+	}
+
+	private static Texture MakeUavArray( int w, int h, int count )
+	{
+		return Texture.CreateArray( w, h, count, ImageFormat.RGBA8888 )
+			.WithUAVBinding()
+			.Finish();
 	}
 
 	private static int[] BuildMosaicTable()
@@ -174,6 +277,15 @@ public sealed partial class ComputeRenderer2D
 		_objColor = null;
 		_objFlags = null;
 		_output = null;
+
+		_captureSrcA?.Dispose();
+		CaptureOutput128Tex?.Dispose();
+		CaptureOutput256Tex?.Dispose();
+		_captureSrcB?.Dispose();
+		_captureSrcA = null;
+		CaptureOutput128Tex = null;
+		CaptureOutput256Tex = null;
+		_captureSrcB = null;
 
 		DisposeShaders();
 		RenderCommandList = null;

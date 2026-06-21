@@ -128,13 +128,24 @@ public sealed partial class ComputeRenderer3D
 
 	private static int BinResultHeaderUints => MaxVariants * 4 + MaxVariants + 4;
 
+	private static int GetMSBit( int v )
+	{
+		if ( v <= 0 ) return 0;
+		int b = 1;
+		while ( (b << 1) <= v ) b <<= 1;
+		return b;
+	}
+
 	private void ComputeDimensions()
 	{
 		int scale = _scaleFactor;
 		_screenWidth = 256 * scale;
 		_screenHeight = 192 * scale;
 
-		_tileSize = 8;
+		int tileScale = GetMSBit( 2 * scale / 9 );
+		tileScale <<= 1;
+		if ( tileScale == 0 ) tileScale = 1;
+		_tileSize = Math.Min( 8 * tileScale, 32 );
 		_coarseTileCountY = _tileSize < 32 ? 4 : 6;
 		_clearCoarseBinMaskLocalSize = _tileSize < 32 ? 64 : 48;
 		_coarseTileArea = CoarseTileCountX * _coarseTileCountY;

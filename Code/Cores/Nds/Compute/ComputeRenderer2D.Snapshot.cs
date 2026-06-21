@@ -22,7 +22,13 @@ public sealed partial class ComputeRenderer2D
 	private int[] _snapBrightFactor;
 	private int[] _snapScreenOff;
 	private int[] _snapDispMode;
+	private int[] _snapVramCap;
 	private uint[][] _snapVramDisplay;
+
+	private bool[] _snapCapOn;
+	private int[] _snapCapBank, _snapCapOffset, _snapCapWidth, _snapCapHeight;
+	private int[] _snapCapMode, _snapCapEVA, _snapCapEVB, _snapCapSrcA3D, _snapCapSrcBEn, _snapCapSize;
+	private uint[][] _snapCapSrcB;
 
 	private int _writeSlot, _readySlot = -1, _readSlot = -1;
 	private int _frameReady;
@@ -48,10 +54,25 @@ public sealed partial class ComputeRenderer2D
 		_snapBrightFactor = new int[FrameSlots];
 		_snapScreenOff = new int[FrameSlots];
 		_snapDispMode = new int[FrameSlots];
+		_snapVramCap = new int[FrameSlots];
 		_snapVramDisplay = new uint[FrameSlots][];
+
+		_snapCapOn = new bool[FrameSlots];
+		_snapCapBank = new int[FrameSlots];
+		_snapCapOffset = new int[FrameSlots];
+		_snapCapWidth = new int[FrameSlots];
+		_snapCapHeight = new int[FrameSlots];
+		_snapCapMode = new int[FrameSlots];
+		_snapCapEVA = new int[FrameSlots];
+		_snapCapEVB = new int[FrameSlots];
+		_snapCapSrcA3D = new int[FrameSlots];
+		_snapCapSrcBEn = new int[FrameSlots];
+		_snapCapSize = new int[FrameSlots];
+		_snapCapSrcB = new uint[FrameSlots][];
 
 		for ( int i = 0; i < FrameSlots; i++ )
 		{
+			_snapCapSrcB[i] = new uint[ScreenW * ScreenH];
 			_snapScan[i] = new sScanline[ScreenH];
 			_snapVramBG[i] = new uint[U( _bgFlatBytes )];
 			_snapVramOBJ[i] = new uint[U( _objFlatBytes )];
@@ -121,9 +142,12 @@ public sealed partial class ComputeRenderer2D
 		_snapScreenOff[s] = screenOff;
 
 		_snapDispMode[s] = dispMode;
+		_snapVramCap[s] = -1;
 		if ( dispMode == 2 )
 		{
 			int blk = (int)((_gpu2d.DispCnt >> 18) & 0x3);
+			if ( _num == 0 && (_gpu.VRAMMap_LCDC & (1u << blk)) != 0 )
+				_snapVramCap[s] = _gpu.GetCaptureBlock_LCDC( (uint)blk << 17 );
 			byte[] bank = blk == 0 ? _gpu.VRAM_A : blk == 1 ? _gpu.VRAM_B : blk == 2 ? _gpu.VRAM_C : _gpu.VRAM_D;
 			Buffer.BlockCopy( bank, 0, _snapVramDisplay[s], 0, 0x20000 );
 		}
@@ -135,8 +159,75 @@ public sealed partial class ComputeRenderer2D
 
 		BuildPalettes( s );
 
+		if ( _num == 0 )
+			DecodeCapture( s );
+
 		_writeSlot = Interlocked.Exchange( ref _readySlot, _writeSlot );
 		Interlocked.Exchange( ref _frameReady, 1 );
+	}
+
+	private void DecodeCapture( int s )
+	{
+		if ( !_gpu.CaptureEnable )
+		{
+			_snapCapOn[s] = false;
+			return;
+		}
+
+		uint cap = _gpu.CaptureCnt;
+		uint sz = (cap >> 20) & 0x3;
+		int width, height;
+		if ( sz == 0 ) { width = 128; height = 128; }
+		else { width = 256; height = 64 * (int)sz; }
+
+		_snapCapOn[s] = true;
+		_snapCapWidth[s] = width;
+		_snapCapHeight[s] = height;
+		_snapCapSize[s] = (int)sz;
+		_snapCapBank[s] = (int)((cap >> 16) & 0x3);
+		_snapCapOffset[s] = (int)((cap >> 18) & 0x3);
+		_snapCapMode[s] = (int)((cap >> 29) & 0x3);
+
+		int eva = (int)(cap & 0x1F);
+		int evb = (int)((cap >> 8) & 0x1F);
+		if ( eva > 16 ) eva = 16;
+		if ( evb > 16 ) evb = 16;
+		_snapCapEVA[s] = eva;
+		_snapCapEVB[s] = evb;
+		_snapCapSrcA3D[s] = (int)((cap >> 24) & 0x1);
+
+		bool srcBen = ((cap >> 25) & 0x1) == 0;
+		_snapCapSrcBEn[s] = srcBen ? 1 : 0;
+		if ( srcBen )
+			BuildCaptureSrcB( s, cap, width, height );
+	}
+
+	private void BuildCaptureSrcB( int s, uint cap, int width, int height )
+	{
+		uint dispcnt = _gpu2d.DispCnt;
+		uint srcvram = (dispcnt >> 18) & 0x3;
+		byte[] bank = srcvram == 0 ? _gpu.VRAM_A : srcvram == 1 ? _gpu.VRAM_B : srcvram == 2 ? _gpu.VRAM_C : _gpu.VRAM_D;
+		if ( bank == null )
+		{
+			_snapCapSrcBEn[s] = 0;
+			return;
+		}
+
+		uint mask = 0x1FFFF;
+		uint[] dst = _snapCapSrcB[s];
+		for ( int y = 0; y < height; y++ )
+		{
+			uint offset = (uint)(y * 256);
+			if ( ((dispcnt >> 16) & 0x3) != 2 )
+				offset += ((cap >> 26) & 0x3) << 14;
+			uint word = offset & 0xFFFF;
+			int row = y * width;
+			for ( int x = 0; x < width; x++ )
+			{
+				uint a = ((word + (uint)x) * 2) & mask;
+				dst[row + x] = (uint)(bank[a] | (bank[a + 1] << 8));
+			}
+		}
 	}
 
 	private void BuildPalettes( int s )

@@ -18,6 +18,8 @@ public sealed partial class ComputeRenderer2D
 	];
 
 	private readonly sBGConfig[] _layerConfig = new sBGConfig[4];
+	private readonly int[] _captureInfoBG = new int[32];
+	private readonly int[] _captureInfoOBJ = new int[16];
 	private readonly sOAM[] _spriteOAM = new sOAM[128];
 	private readonly Vec4i[] _rotscale = new Vec4i[32];
 	private int _numSprites;
@@ -162,16 +164,16 @@ public sealed partial class ComputeRenderer2D
 			{
 				cfg.WinPos0 = x0;
 				cfg.WinPos1 = x1;
-				if ( _win0Wrap ) cfg.WinMask |= (1 << 0);
-				cfg.WinMask |= (1 << 1);
+				if ( _win0Wrap ) cfg.WinMask |= 1 << 0;
+				cfg.WinMask |= 1 << 1;
 				_win0Wrap = false;
 			}
 			else
 			{
 				cfg.WinPos0 = x1;
 				cfg.WinPos1 = x0;
-				if ( _win0Wrap ) cfg.WinMask |= (1 << 0);
-				cfg.WinMask |= (1 << 2);
+				if ( _win0Wrap ) cfg.WinMask |= 1 << 0;
+				cfg.WinMask |= 1 << 2;
 				_win0Wrap = true;
 			}
 		}
@@ -189,16 +191,16 @@ public sealed partial class ComputeRenderer2D
 			{
 				cfg.WinPos2 = x0;
 				cfg.WinPos3 = x1;
-				if ( _win1Wrap ) cfg.WinMask |= (1 << 3);
-				cfg.WinMask |= (1 << 4);
+				if ( _win1Wrap ) cfg.WinMask |= 1 << 3;
+				cfg.WinMask |= 1 << 4;
 				_win1Wrap = false;
 			}
 			else
 			{
 				cfg.WinPos2 = x1;
 				cfg.WinPos3 = x0;
-				if ( _win1Wrap ) cfg.WinMask |= (1 << 3);
-				cfg.WinMask |= (1 << 5);
+				if ( _win1Wrap ) cfg.WinMask |= 1 << 3;
+				cfg.WinMask |= 1 << 5;
 				_win1Wrap = true;
 			}
 		}
@@ -212,6 +214,12 @@ public sealed partial class ComputeRenderer2D
 	public void UpdateLayerConfig()
 	{
 		uint dispcnt = _gpu2d.DispCnt;
+
+		if ( _num == 0 )
+			_gpu.GetCaptureInfo_ABG( _captureInfoBG );
+		else
+			_gpu.GetCaptureInfo_BBG( _captureInfoBG );
+		int capturemask = _num == 0 ? 0x1F : 0x7;
 
 		uint tilebase, mapbase;
 		if ( _num == 0 )
@@ -247,6 +255,7 @@ public sealed partial class ComputeRenderer2D
 
 			ushort bgcnt = _gpu2d.BGCnt[layer];
 			sBGConfig cfg = default;
+			cfg.CapBlock = -1;
 
 			cfg.TileOffset = (int)tilebase + (((bgcnt >> 2) & 0xF) << 14);
 			cfg.MapOffset = (int)mapbase + (((bgcnt >> 8) & 0x1F) << 11);
@@ -313,7 +322,27 @@ public sealed partial class ComputeRenderer2D
 					cfg.MapOffset = ((bgcnt >> 8) & 0x1F) << 14;
 
 					if ( (bgcnt & (1 << 2)) != 0 )
+					{
 						cfg.Type = 5;
+						if ( Cap128 != null && (cfg.SizeX == 128 || cfg.SizeX == 256) )
+						{
+							int mapsz = cfg.SizeX * cfg.SizeY * 2;
+							uint startaddr = (uint)cfg.MapOffset >> 14;
+							uint endaddr = ((uint)(cfg.MapOffset + mapsz) + 0x3FFF) >> 14;
+							int capblock = -1;
+							for ( uint b = startaddr; b < endaddr; b++ )
+							{
+								int blk = _captureInfoBG[(int)(b & (uint)capturemask)];
+								if ( blk != -1 ) capblock = blk;
+							}
+							if ( capblock != -1 )
+							{
+								cfg.CapBlock = capblock;
+								cfg.CapSize = cfg.SizeX == 128 ? 0 : 1;
+								cfg.CapYOffset = cfg.SizeX == 128 ? ((cfg.MapOffset >> 8) & 0x7F) : ((cfg.MapOffset >> 9) & 0xFF);
+							}
+						}
+					}
 					else
 						cfg.Type = 4;
 				}
@@ -370,6 +399,12 @@ public sealed partial class ComputeRenderer2D
 		uint dispcnt = _gpu2d.DispCnt;
 		int numsprites = 0;
 
+		if ( _num == 0 )
+			_gpu.GetCaptureInfo_AOBJ( _captureInfoOBJ );
+		else
+			_gpu.GetCaptureInfo_BOBJ( _captureInfoOBJ );
+		int objcapturemask = _num == 0 ? 0xF : 0x7;
+
 		for ( int sprnum = 0; sprnum < 128; sprnum++ )
 		{
 			int attr0 = OamU16( sprnum * 4 + 0 );
@@ -415,6 +450,7 @@ public sealed partial class ComputeRenderer2D
 				break;
 
 			sOAM spr = default;
+			spr.CapBlock = -1;
 			spr.PositionX = xpos;
 			spr.PositionY = ypos;
 			spr.SizeX = width;
@@ -461,6 +497,34 @@ public sealed partial class ComputeRenderer2D
 					{
 						spr.TileOffset = ((tilenum & 0x00F) << 4) + ((tilenum & 0x3F0) << 7);
 						spr.TileStride = 128 * 2;
+					}
+
+					if ( Cap128 != null )
+					{
+						int startaddr = spr.TileOffset >> 14;
+						int endaddr = (spr.TileOffset + (height * spr.TileStride) + 0x3FFF) >> 14;
+						int capblock = -1;
+						for ( int b = startaddr; b < endaddr; b++ )
+						{
+							int blk = _captureInfoOBJ[b & objcapturemask];
+							if ( blk != -1 ) capblock = blk;
+						}
+						if ( capblock != -1 )
+						{
+							spr.CapBlock = capblock;
+							if ( !is256 )
+							{
+								spr.Type = 3;
+								spr.CapSize = 0;
+								spr.TileOffset &= 0x7FFF;
+							}
+							else
+							{
+								spr.Type = 4;
+								spr.CapSize = 1;
+								spr.TileOffset &= 0x1FFFF;
+							}
+						}
 					}
 				}
 				spr.PalOffset = 1 + (attr2 >> 12);

@@ -17,9 +17,12 @@ CS
 	StructuredBuffer<uint> PalOBJ < Attribute( "PalOBJ" ); >;
 	StructuredBuffer<sOAM> OAMConfig < Attribute( "OAMConfig" ); >;
 	RWTexture2D<float4> OutputAtlas < Attribute( "OutputAtlas" ); >;
+	RWTexture2DArray<float4> CaptureOut128 < Attribute( "CaptureOut128" ); >;
+	RWTexture2DArray<float4> CaptureOut256 < Attribute( "CaptureOut256" ); >;
 
 	int uVRAMMask < Attribute( "VRAMMask" ); >;
 	int uNumSprites < Attribute( "NumSprites" ); >;
+	int uScale < Attribute( "uScale" ); >;
 
 	int VRAMRead8( int addr )
 	{
@@ -76,7 +79,7 @@ CS
 			ret = GetOBJPalEntry( spr.PalOffset, col );
 			ret.a = ( col == 0 ) ? 0.0 : 1.0;
 		}
-		else
+		else if ( spr.Type == 2 )
 		{
 			int tileoffset = spr.TileOffset +
 				( coord.x * 2 ) +
@@ -88,6 +91,18 @@ CS
 			ret.g = float( ( col >> 4 ) & 0x3E ) / 63.0;
 			ret.b = float( ( col >> 9 ) & 0x3E ) / 63.0;
 			ret.a = float( col >> 15 );
+		}
+		else if ( spr.Type == 3 )
+		{
+			int capX = ( ( spr.TileOffset & 0xFF ) >> 1 ) + coord.x;
+			int capY = ( spr.TileOffset >> 8 ) + coord.y;
+			ret = CaptureOut128[int3( capX * uScale, capY * uScale, spr.CapBlock )];
+		}
+		else if ( spr.Type == 4 )
+		{
+			int capX = ( ( spr.TileOffset & 0x1FF ) >> 1 ) + coord.x;
+			int capY = ( spr.TileOffset >> 9 ) + coord.y;
+			ret = CaptureOut256[int3( capX * uScale, capY * uScale, spr.CapBlock >> 2 )];
 		}
 
 		return ret;
@@ -101,7 +116,7 @@ CS
 			return;
 
 		sOAM spr = OAMConfig[slot];
-		if ( spr.Type >= 3 )
+		if ( spr.Type >= 5 )
 			return;
 
 		int2 local = int2( (int)id.x & 0x3F, (int)id.y & 0x3F );

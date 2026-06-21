@@ -41,6 +41,14 @@ public sealed partial class ComputeRenderer3D
 	private readonly int[] _varH = new int[MaxVariants];
 	private readonly bool[] _varTexture = new bool[MaxVariants];
 	private readonly bool[] _varShadow = new bool[MaxVariants];
+	private readonly int[] _varCapture = new int[MaxVariants];
+	private readonly int[] _varCapYOffset = new int[MaxVariants];
+	private readonly int[] _captureInfoTex = new int[16];
+
+	private ComputeRenderer2D _captureSrc;
+	public void SetCaptureSource( ComputeRenderer2D s ) => _captureSrc = s;
+	private Texture _cap128 => _captureSrc?.CaptureOutput128Tex;
+	private Texture _cap256 => _captureSrc?.CaptureOutput256Tex;
 
 	private void ResetVariants()
 	{
@@ -143,11 +151,11 @@ public sealed partial class ComputeRenderer3D
 			Array.Copy( _decodeTmp, y * w, data, basei + y * size, cw );
 	}
 
-	private int GetOrAddVariant( int bucket, int layer, int blend, bool texture, bool shadow, int w, int h )
+	private int GetOrAddVariant( int bucket, int layer, int blend, bool texture, bool shadow, int w, int h, int capture, int capYOffset )
 	{
 		for ( int j = 0; j < _numVariants; j++ )
 		{
-			if ( _varBucket[j] == bucket && _varLayer[j] == layer && _varBlend[j] == blend && _varTexture[j] == texture && _varShadow[j] == shadow )
+			if ( _varBucket[j] == bucket && _varLayer[j] == layer && _varBlend[j] == blend && _varTexture[j] == texture && _varShadow[j] == shadow && _varCapture[j] == capture && _varCapYOffset[j] == capYOffset )
 				return j;
 		}
 
@@ -162,6 +170,8 @@ public sealed partial class ComputeRenderer3D
 		_varShadow[v] = shadow;
 		_varW[v] = w;
 		_varH[v] = h;
+		_varCapture[v] = capture;
+		_varCapYOffset[v] = capYOffset;
 		return v;
 	}
 
@@ -185,18 +195,38 @@ public sealed partial class ComputeRenderer3D
 		else
 			blend = 0;
 
-		int layer = 0, w = 0, h = 0, bucket = 0;
+		int layer = 0, w = 0, h = 0, bucket = 0, capture = 0, capYOffset = 0;
 		if ( hasTex )
 		{
-			uint tpKey = texParam & ~0xC00F0000u;
-			if ( fmt == 5 ) tpKey &= ~(1u << 29);
-			ulong texKey = fmt == 7 ? tpKey : (tpKey | ((ulong)(polygon.TexPalette & 0x1FFF) << 32));
-			layer = GetOrDecodeLayer( texKey, texParam, polygon.TexPalette, out bucket );
 			w = TextureWidth( texParam );
 			h = TextureHeight( texParam );
+
+			if ( fmt == 7 && (w == 128 || w == 256) && _cap128 != null )
+			{
+				uint texaddr = texParam & 0xFFFF;
+				uint startaddr = (texaddr << 3) >> 15;
+				uint endaddr = ((texaddr << 3) + (uint)(h * w * 2) + 0x7FFF) >> 15;
+				int capblock = -1;
+				for ( uint b = startaddr; b < endaddr && b < 16; b++ )
+					if ( _captureInfoTex[b] != -1 ) capblock = _captureInfoTex[b];
+
+				if ( capblock != -1 )
+				{
+					if ( w == 128 ) { capture = 1; layer = capblock; capYOffset = (int)((texaddr >> 5) & 0x7F); }
+					else { capture = 2; layer = capblock >> 2; capYOffset = (int)((texaddr >> 6) & 0xFF); }
+				}
+			}
+
+			if ( capture == 0 )
+			{
+				uint tpKey = texParam & ~0xC00F0000u;
+				if ( fmt == 5 ) tpKey &= ~(1u << 29);
+				ulong texKey = fmt == 7 ? tpKey : (tpKey | ((ulong)(polygon.TexPalette & 0x1FFF) << 32));
+				layer = GetOrDecodeLayer( texKey, texParam, polygon.TexPalette, out bucket );
+			}
 		}
 
-		_renderPolygons[i].Variant = (uint)GetOrAddVariant( bucket, layer, blend, hasTex, shadowMask, w, h );
+		_renderPolygons[i].Variant = (uint)GetOrAddVariant( bucket, layer, blend, hasTex, shadowMask, w, h, capture, capYOffset );
 		_renderPolygons[i].TextureLayer = layer;
 	}
 }

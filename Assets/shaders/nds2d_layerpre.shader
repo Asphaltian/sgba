@@ -17,9 +17,12 @@ CS
 	StructuredBuffer<uint> PalBG < Attribute( "PalBG" ); >;
 	StructuredBuffer<sBGConfig> BGConfig < Attribute( "BGConfig" ); >;
 	RWTexture2D<float4> OutputLayer < Attribute( "OutputLayer" ); >;
+	RWTexture2DArray<float4> CaptureOut128 < Attribute( "CaptureOut128" ); >;
+	RWTexture2DArray<float4> CaptureOut256 < Attribute( "CaptureOut256" ); >;
 
 	int uVRAMMask < Attribute( "VRAMMask" ); >;
 	int uCurBG < Attribute( "CurBG" ); >;
+	int uScale < Attribute( "uScale" ); >;
 
 	int VRAMRead8( int addr )
 	{
@@ -175,13 +178,28 @@ CS
 		}
 		else if ( cfg.Type == 5 )
 		{
-			int mapoffset = cfg.MapOffset + ( ( coord.x + ( coord.y * cfg.SizeX ) ) << 1 );
-			int col = VRAMRead16( mapoffset );
+			if ( cfg.CapBlock >= 0 )
+			{
+				int bh = cfg.CapSize == 0 ? 128 : 256;
+				int cyc = coord.y + cfg.CapYOffset;
+				if ( cyc >= bh ) cyc -= bh;
+				int px = coord.x * uScale;
+				int py = cyc * uScale;
+				if ( cfg.CapSize == 0 )
+					ret = CaptureOut128[int3( px, py, cfg.CapBlock )];
+				else
+					ret = CaptureOut256[int3( px, py, cfg.CapBlock >> 2 )];
+			}
+			else
+			{
+				int mapoffset = cfg.MapOffset + ( ( coord.x + ( coord.y * cfg.SizeX ) ) << 1 );
+				int col = VRAMRead16( mapoffset );
 
-			ret.r = float( ( col << 1 ) & 0x3E ) / 63.0;
-			ret.g = float( ( col >> 4 ) & 0x3E ) / 63.0;
-			ret.b = float( ( col >> 9 ) & 0x3E ) / 63.0;
-			ret.a = float( col >> 15 );
+				ret.r = float( ( col << 1 ) & 0x3E ) / 63.0;
+				ret.g = float( ( col >> 4 ) & 0x3E ) / 63.0;
+				ret.b = float( ( col >> 9 ) & 0x3E ) / 63.0;
+				ret.a = float( col >> 15 );
+			}
 		}
 
 		return ret;

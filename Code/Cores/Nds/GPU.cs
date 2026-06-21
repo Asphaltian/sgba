@@ -77,6 +77,8 @@ public sealed partial class GPU
 		Array.Clear( VRAMMap_TexPal );
 		Array.Clear( VRAMMap_ARM7 );
 
+		ResetCapture();
+
 		MasterBrightnessA = 0;
 		MasterBrightnessB = 0;
 
@@ -124,8 +126,8 @@ public sealed partial class GPU
 			switch ( oldcnt & 0x3 )
 			{
 				case 0: VRAMMap_LCDC &= ~bankmask; break;
-				case 1: UnmapRange( VRAMMap_ABG, oldofs << 3, 8, bankmask ); break;
-				case 2: UnmapRange( VRAMMap_AOBJ, (oldofs & 0x1) << 3, 8, bankmask ); break;
+				case 1: UnmapRange( VRAMMap_ABG, oldofs << 3, 8, bankmask ); SetRangeCBF( VRAMCBF_ABG, VRAMMap_ABG, oldofs << 3, 8 ); break;
+				case 2: UnmapRange( VRAMMap_AOBJ, (oldofs & 0x1) << 3, 8, bankmask ); SetRangeCBF( VRAMCBF_AOBJ, VRAMMap_AOBJ, (oldofs & 0x1) << 3, 8 ); break;
 				case 3: VRAMMap_Texture[oldofs] &= ~bankmask; break;
 			}
 		}
@@ -135,8 +137,8 @@ public sealed partial class GPU
 			switch ( cnt & 0x3 )
 			{
 				case 0: VRAMMap_LCDC |= bankmask; break;
-				case 1: MapRange( VRAMMap_ABG, ofs << 3, 8, bankmask ); break;
-				case 2: MapRange( VRAMMap_AOBJ, (ofs & 0x1) << 3, 8, bankmask ); break;
+				case 1: MapRange( VRAMMap_ABG, ofs << 3, 8, bankmask ); SetRangeCBF( VRAMCBF_ABG, VRAMMap_ABG, ofs << 3, 8 ); break;
+				case 2: MapRange( VRAMMap_AOBJ, (ofs & 0x1) << 3, 8, bankmask ); SetRangeCBF( VRAMCBF_AOBJ, VRAMMap_AOBJ, (ofs & 0x1) << 3, 8 ); break;
 				case 3: VRAMMap_Texture[ofs] |= bankmask; break;
 			}
 		}
@@ -162,12 +164,12 @@ public sealed partial class GPU
 			switch ( oldcnt & 0x7 )
 			{
 				case 0: VRAMMap_LCDC &= ~bankmask; break;
-				case 1: UnmapRange( VRAMMap_ABG, oldofs << 3, 8, bankmask ); break;
+				case 1: UnmapRange( VRAMMap_ABG, oldofs << 3, 8, bankmask ); SetRangeCBF( VRAMCBF_ABG, VRAMMap_ABG, oldofs << 3, 8 ); break;
 				case 2: VRAMMap_ARM7[oldofs & 0x1] &= ~bankmask; break;
 				case 3: VRAMMap_Texture[oldofs] &= ~bankmask; break;
 				case 4:
-					if ( bank == 2 ) UnmapRange( VRAMMap_BBG, 0, 8, bankmask );
-					else UnmapRange( VRAMMap_BOBJ, 0, 8, bankmask );
+					if ( bank == 2 ) { UnmapRange( VRAMMap_BBG, 0, 8, bankmask ); SetRangeCBF( VRAMCBF_BBG, VRAMMap_BBG, 0, 8 ); }
+					else { UnmapRange( VRAMMap_BOBJ, 0, 8, bankmask ); SetRangeCBF( VRAMCBF_BOBJ, VRAMMap_BOBJ, 0, 8 ); }
 					break;
 			}
 		}
@@ -177,15 +179,15 @@ public sealed partial class GPU
 			switch ( cnt & 0x7 )
 			{
 				case 0: VRAMMap_LCDC |= bankmask; break;
-				case 1: MapRange( VRAMMap_ABG, ofs << 3, 8, bankmask ); break;
+				case 1: MapRange( VRAMMap_ABG, ofs << 3, 8, bankmask ); SetRangeCBF( VRAMCBF_ABG, VRAMMap_ABG, ofs << 3, 8 ); break;
 				case 2:
 					VRAMMap_ARM7[ofs & 0x1] |= bankmask;
 					VRAMSTAT |= (byte)(1 << (int)(bank - 2));
 					break;
 				case 3: VRAMMap_Texture[ofs] |= bankmask; break;
 				case 4:
-					if ( bank == 2 ) MapRange( VRAMMap_BBG, 0, 8, bankmask );
-					else MapRange( VRAMMap_BOBJ, 0, 8, bankmask );
+					if ( bank == 2 ) { MapRange( VRAMMap_BBG, 0, 8, bankmask ); SetRangeCBF( VRAMCBF_BBG, VRAMMap_BBG, 0, 8 ); }
+					else { MapRange( VRAMMap_BOBJ, 0, 8, bankmask ); SetRangeCBF( VRAMCBF_BOBJ, VRAMMap_BOBJ, 0, 8 ); }
 					break;
 			}
 		}
@@ -207,8 +209,8 @@ public sealed partial class GPU
 			switch ( oldcnt & 0x7 )
 			{
 				case 0: VRAMMap_LCDC &= ~bankmask; break;
-				case 1: UnmapRange( VRAMMap_ABG, 0, 4, bankmask ); break;
-				case 2: UnmapRange( VRAMMap_AOBJ, 0, 4, bankmask ); break;
+				case 1: UnmapRange( VRAMMap_ABG, 0, 4, bankmask ); SetRangeCBF( VRAMCBF_ABG, VRAMMap_ABG, 0, 8 ); break;
+				case 2: UnmapRange( VRAMMap_AOBJ, 0, 4, bankmask ); SetRangeCBF( VRAMCBF_AOBJ, VRAMMap_AOBJ, 0, 8 ); break;
 				case 3: UnmapRange( VRAMMap_TexPal, 0, 4, bankmask ); break;
 				case 4: UnmapRange( VRAMMap_ABGExtPal, 0, 4, bankmask ); break;
 			}
@@ -219,8 +221,8 @@ public sealed partial class GPU
 			switch ( cnt & 0x7 )
 			{
 				case 0: VRAMMap_LCDC |= bankmask; break;
-				case 1: MapRange( VRAMMap_ABG, 0, 4, bankmask ); break;
-				case 2: MapRange( VRAMMap_AOBJ, 0, 4, bankmask ); break;
+				case 1: MapRange( VRAMMap_ABG, 0, 4, bankmask ); SetRangeCBF( VRAMCBF_ABG, VRAMMap_ABG, 0, 8 ); break;
+				case 2: MapRange( VRAMMap_AOBJ, 0, 4, bankmask ); SetRangeCBF( VRAMCBF_AOBJ, VRAMMap_AOBJ, 0, 8 ); break;
 				case 3: MapRange( VRAMMap_TexPal, 0, 4, bankmask ); break;
 				case 4: MapRange( VRAMMap_ABGExtPal, 0, 4, bankmask ); break;
 			}
@@ -249,14 +251,14 @@ public sealed partial class GPU
 					{
 						int based = (oldofs & 0x1) + ((oldofs & 0x2) << 1);
 						VRAMMap_ABG[based] &= ~bankmask;
-						VRAMMap_ABG[based + 2] &= ~bankmask;
+						VRAMMap_ABG[based + 2] &= ~bankmask; SetCBF( VRAMCBF_ABG, VRAMMap_ABG, based ); SetCBF( VRAMCBF_ABG, VRAMMap_ABG, based + 2 );
 						break;
 					}
 				case 2:
 					{
 						int based = (oldofs & 0x1) + ((oldofs & 0x2) << 1);
 						VRAMMap_AOBJ[based] &= ~bankmask;
-						VRAMMap_AOBJ[based + 2] &= ~bankmask;
+						VRAMMap_AOBJ[based + 2] &= ~bankmask; SetCBF( VRAMCBF_AOBJ, VRAMMap_AOBJ, based ); SetCBF( VRAMCBF_AOBJ, VRAMMap_AOBJ, based + 2 );
 						break;
 					}
 				case 3: VRAMMap_TexPal[(oldofs & 0x1) + ((oldofs & 0x2) << 1)] &= ~bankmask; break;
@@ -277,14 +279,14 @@ public sealed partial class GPU
 					{
 						int based = (ofs & 0x1) + ((ofs & 0x2) << 1);
 						VRAMMap_ABG[based] |= bankmask;
-						VRAMMap_ABG[based + 2] |= bankmask;
+						VRAMMap_ABG[based + 2] |= bankmask; SetCBF( VRAMCBF_ABG, VRAMMap_ABG, based ); SetCBF( VRAMCBF_ABG, VRAMMap_ABG, based + 2 );
 						break;
 					}
 				case 2:
 					{
 						int based = (ofs & 0x1) + ((ofs & 0x2) << 1);
 						VRAMMap_AOBJ[based] |= bankmask;
-						VRAMMap_AOBJ[based + 2] |= bankmask;
+						VRAMMap_AOBJ[based + 2] |= bankmask; SetCBF( VRAMCBF_AOBJ, VRAMMap_AOBJ, based ); SetCBF( VRAMCBF_AOBJ, VRAMMap_AOBJ, based + 2 );
 						break;
 					}
 				case 3: VRAMMap_TexPal[(ofs & 0x1) + ((ofs & 0x2) << 1)] |= bankmask; break;
@@ -315,7 +317,7 @@ public sealed partial class GPU
 				case 0: VRAMMap_LCDC &= ~bankmask; break;
 				case 1:
 					foreach ( int i in new[] { 0, 1, 4, 5 } )
-						VRAMMap_BBG[i] &= ~bankmask;
+					{ VRAMMap_BBG[i] &= ~bankmask; SetCBF( VRAMCBF_BBG, VRAMMap_BBG, i ); }
 					break;
 				case 2: UnmapRange( VRAMMap_BBGExtPal, 0, 4, bankmask ); break;
 			}
@@ -328,7 +330,7 @@ public sealed partial class GPU
 				case 0: VRAMMap_LCDC |= bankmask; break;
 				case 1:
 					foreach ( int i in new[] { 0, 1, 4, 5 } )
-						VRAMMap_BBG[i] |= bankmask;
+					{ VRAMMap_BBG[i] |= bankmask; SetCBF( VRAMCBF_BBG, VRAMMap_BBG, i ); }
 					break;
 				case 2: MapRange( VRAMMap_BBGExtPal, 0, 4, bankmask ); break;
 			}
@@ -353,9 +355,9 @@ public sealed partial class GPU
 				case 0: VRAMMap_LCDC &= ~bankmask; break;
 				case 1:
 					foreach ( int i in new[] { 2, 3, 6, 7 } )
-						VRAMMap_BBG[i] &= ~bankmask;
+					{ VRAMMap_BBG[i] &= ~bankmask; SetCBF( VRAMCBF_BBG, VRAMMap_BBG, i ); }
 					break;
-				case 2: UnmapRange( VRAMMap_BOBJ, 0, 8, bankmask ); break;
+				case 2: UnmapRange( VRAMMap_BOBJ, 0, 8, bankmask ); SetRangeCBF( VRAMCBF_BOBJ, VRAMMap_BOBJ, 0, 8 ); break;
 				case 3: VRAMMap_BOBJExtPal &= ~bankmask; break;
 			}
 		}
@@ -367,9 +369,9 @@ public sealed partial class GPU
 				case 0: VRAMMap_LCDC |= bankmask; break;
 				case 1:
 					foreach ( int i in new[] { 2, 3, 6, 7 } )
-						VRAMMap_BBG[i] |= bankmask;
+					{ VRAMMap_BBG[i] |= bankmask; SetCBF( VRAMCBF_BBG, VRAMMap_BBG, i ); }
 					break;
-				case 2: MapRange( VRAMMap_BOBJ, 0, 8, bankmask ); break;
+				case 2: MapRange( VRAMMap_BOBJ, 0, 8, bankmask ); SetRangeCBF( VRAMCBF_BOBJ, VRAMMap_BOBJ, 0, 8 ); break;
 				case 3: VRAMMap_BOBJExtPal |= bankmask; break;
 			}
 		}

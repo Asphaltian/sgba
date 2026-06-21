@@ -17,6 +17,9 @@ public sealed partial class ComputeRenderer3D
 		ResetVariants();
 		BeginTextureFrame();
 
+		if ( _cap128 != null )
+			_gpu2d.GetCaptureInfo_Texture( _captureInfoTex );
+
 		bool enableTex = (_gpu.RenderDispCnt & 1) != 0;
 
 		int screenWidth = 256 * _scaleFactor;

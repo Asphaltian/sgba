@@ -204,7 +204,7 @@ CS
 	[numthreads( 8, 8, 1 )]
 	void MainCs( uint3 groupId : SV_GroupID, uint3 globalId : SV_DispatchThreadID, uint3 localId : SV_GroupThreadID )
 	{
-		int linearTile = int( groupId.x + groupId.y * uint( TilesPerLine ) );
+		int linearTile = int( (globalId.x / uint( TileSize )) + (globalId.y / uint( TileSize )) * uint( TilesPerLine ) );
 
 		uint coarseMaskLo = BinResult[HeaderUints + uint( linearTile * CoarseBinStride + 0 )];
 		uint coarseMaskHi = BinResult[HeaderUints + uint( linearTile * CoarseBinStride + 1 )];
@@ -220,7 +220,7 @@ CS
 		uint stencil = 0u;
 		bool prevIsShadowMask = false;
 
-		int tileInnerOffset = int( localId.x ) + int( localId.y ) * TileSize;
+		int tileInnerOffset = int( globalId.x % uint( TileSize ) ) + int( globalId.y % uint( TileSize ) ) * TileSize;
 
 		ProcessCoarseMask( linearTile, coarseMaskLo, 0u, tileInnerOffset, color, depth, attr, stencil, prevIsShadowMask );
 		ProcessCoarseMask( linearTile, coarseMaskHi, uint( BinStride / 2 ), tileInnerOffset, color, depth, attr, stencil, prevIsShadowMask );

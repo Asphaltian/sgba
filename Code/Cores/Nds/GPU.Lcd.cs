@@ -16,8 +16,8 @@ public sealed partial class GPU
 	private ushort NextVCount;
 	private bool VCountOverride;
 
-	public uint[] FramebufferA = new uint[256 * 192];
-	public uint[] FramebufferB = new uint[256 * 192];
+	public uint CaptureCnt;
+	public bool CaptureEnable;
 
 	private void ResetLcd()
 	{
@@ -31,9 +31,6 @@ public sealed partial class GPU
 		CaptureEnable = false;
 		NextVCount = 0;
 		VCountOverride = false;
-
-		Array.Clear( FramebufferA );
-		Array.Clear( FramebufferB );
 	}
 
 	private void SetDispStatIRQ( int cpu, int num )
@@ -91,8 +88,14 @@ public sealed partial class GPU
 		GPU2D_A.UpdateWindows( VCount );
 		GPU2D_B.UpdateWindows( VCount );
 
-		if ( VCount == 0 && (CaptureCnt & (1u << 31)) != 0 )
-			CaptureEnable = true;
+		if ( VCount == 0 )
+		{
+			if ( (CaptureCnt & (1u << 31)) != 0 )
+			{
+				CaptureEnable = true;
+				CheckCaptureStart();
+			}
+		}
 
 		if ( VCount >= 2 && VCount < 194 )
 			NDS.CheckDMAs( 0, 0x03 );
@@ -101,6 +104,9 @@ public sealed partial class GPU
 
 		if ( VCount == 192 )
 		{
+			if ( CaptureEnable )
+				CheckCaptureEnd();
+
 			NDS.GPU3D.VBlank();
 
 			NDS.Render2DA.VBlank();
@@ -156,32 +162,10 @@ public sealed partial class GPU
 
 		if ( VCount < 192 )
 		{
-			if ( CaptureEnable )
-			{
-				GPU2D_A.DrawScanline( VCount );
-				GPU2D_B.DrawScanline( VCount );
-
-				DoCapture( VCount );
-
-				if ( VCount < 191 )
-				{
-					GPU2D_A.DrawSprites( (uint)(VCount + 1) );
-					GPU2D_B.DrawSprites( (uint)(VCount + 1) );
-				}
-			}
-
 			NDS.Render2DA.DrawScanline( VCount );
 			NDS.Render2DB.DrawScanline( VCount );
 
 			NDS.CheckDMAs( 0, 0x02 );
-		}
-		else if ( VCount == 262 )
-		{
-			if ( (CaptureCnt & (1u << 31)) != 0 )
-			{
-				GPU2D_A.DrawSprites( 0 );
-				GPU2D_B.DrawSprites( 0 );
-			}
 		}
 
 		GPU2D_A.UpdateRegistersPostDraw( resetregs );

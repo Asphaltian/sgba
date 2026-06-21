@@ -233,15 +233,15 @@ public sealed partial class NDS
 				break;
 
 			case 0x02:
-			{
-				numdays = 0x28;
+				{
+					numdays = 0x28;
 
-				int year = RtcDateTime[0];
-				year = (year & 0xF) + ((year >> 4) * 10);
-				if ( (year & 3) == 0 )
-					numdays = 0x29;
-			}
-			break;
+					int year = RtcDateTime[0];
+					year = (year & 0xF) + ((year >> 4) * 10);
+					if ( (year & 3) == 0 )
+						numdays = 0x29;
+				}
+				break;
 
 			default:
 				return 0;
