@@ -124,6 +124,8 @@ public sealed partial class NDS
 		PostFlag7 = 0x01;
 
 		PowerControl9 = 0x820F;
+		GPU.SetPowerCnt( PowerControl9 );
+
 		PowerControl7 = 0x0001;
 		SPU.SetPowerCnt( PowerControl7 & 0x0001 );
 

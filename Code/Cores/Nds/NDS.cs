@@ -46,6 +46,8 @@ public sealed partial class NDS : IEmulatorCore
 		_render2D_B.SetRenderer3D( _renderer3D );
 		_render2D_B.SetCaptureOwner( _render2D_A );
 		_renderer3D.SetCaptureSource( _render2D_A );
+		_render2D_A.SetSwapPeer( _render2D_B );
+		_render2D_B.SetSwapPeer( _render2D_A );
 		_topScreen = new NdsScreen( _render2D_B, _renderer3D );
 		_bottomScreen = new NdsScreen( _render2D_A, _renderer3D );
 		_screens = [_topScreen, _bottomScreen];
@@ -119,11 +121,20 @@ public sealed partial class NDS : IEmulatorCore
 			ARM9Target = target << 1;
 			CurCPU = 0;
 			if ( (CPUStop & CPUStop_GXStall) != 0 )
+			{
 				ARM9Timestamp = Math.Min( ARM9Target, ARM9Timestamp + (GPU3D.CyclesToRunFor() << 1) );
+			}
 			else if ( (CPUStop & CPUStop_DMA9) != 0 )
-				RunDMAs( 0 );
+			{
+				DMAs[0].Run();
+				if ( (CPUStop & CPUStop_GXStall) == 0 ) DMAs[1].Run();
+				if ( (CPUStop & CPUStop_GXStall) == 0 ) DMAs[2].Run();
+				if ( (CPUStop & CPUStop_GXStall) == 0 ) DMAs[3].Run();
+			}
 			else
+			{
 				ARM9.Execute();
+			}
 			RunTimers( 0 );
 			GPU3D.Run();
 
@@ -150,10 +161,6 @@ public sealed partial class NDS : IEmulatorCore
 
 	private void PresentFrame()
 	{
-		bool swap = GPU.ScreenSwap;
-		_render2D_A.SetOutputTarget( swap ? _render2D_B.OutputTexture : _render2D_A.OutputTexture );
-		_render2D_B.SetOutputTarget( swap ? _render2D_A.OutputTexture : _render2D_B.OutputTexture );
-
 		_render2D_A.SetOutput3D( _renderer3D.OutputTexture );
 		_render2D_B.SetOutput3D( _renderer3D.OutputTexture );
 	}

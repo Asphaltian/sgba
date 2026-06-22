@@ -10,7 +10,10 @@ public sealed partial class NDS
 	public uint[] IF = new uint[2];
 
 	public byte[,] ARM7MemTimings = new byte[0x20000, 4];
-	public byte[,] ARM9MemTimings = new byte[0x40000, 4];
+	public byte[,] ARM9MemTimings = new byte[0x40000, 8];
+	public uint[] ARM7Regions = new uint[0x20000];
+	public uint[] ARM9Regions = new uint[0x40000];
+	public int ARM9ClockShift = 1;
 
 	private void ResetInterrupts()
 	{
@@ -24,7 +27,7 @@ public sealed partial class NDS
 		IF[0] = IF[1] = 0;
 	}
 
-	private void SetARM9RegionTimings( uint addrstart, uint addrend, int buswidth, int nonseq, int seq, bool mainram )
+	private void SetARM9RegionTimings( uint addrstart, uint addrend, uint region, int buswidth, int nonseq, int seq )
 	{
 		addrstart >>= 2;
 		addrend >>= 2;
@@ -33,7 +36,7 @@ public sealed partial class NDS
 		if ( buswidth == 16 ) { n32 = n16 + s16; s32 = s16 + s16; }
 		else { n32 = n16; s32 = s16; }
 
-		int cpuN = mainram ? 0 : 3;
+		int cpuN = region == Mem9.MainRAM ? 0 : 3;
 
 		for ( uint i = addrstart; i < addrend; i++ )
 		{
@@ -41,10 +44,15 @@ public sealed partial class NDS
 			ARM9MemTimings[i, 1] = (byte)s16;
 			ARM9MemTimings[i, 2] = (byte)(n32 + cpuN);
 			ARM9MemTimings[i, 3] = (byte)s32;
+			ARM9MemTimings[i, 4] = (byte)n16;
+			ARM9MemTimings[i, 5] = (byte)s16;
+			ARM9MemTimings[i, 6] = (byte)n32;
+			ARM9MemTimings[i, 7] = (byte)s32;
+			ARM9Regions[i] = region;
 		}
 	}
 
-	private void SetARM7RegionTimings( uint addrstart, uint addrend, int buswidth, int nonseq, int seq )
+	private void SetARM7RegionTimings( uint addrstart, uint addrend, uint region, int buswidth, int nonseq, int seq )
 	{
 		addrstart >>= 3;
 		addrend >>= 3;
@@ -59,28 +67,29 @@ public sealed partial class NDS
 			ARM7MemTimings[i, 1] = (byte)s16;
 			ARM7MemTimings[i, 2] = (byte)n32;
 			ARM7MemTimings[i, 3] = (byte)s32;
+			ARM7Regions[i] = region;
 		}
 	}
 
 	private void ResetTimings()
 	{
-		SetARM9RegionTimings( 0x00000, 0x100000, 32, 1, 1, false ); // void
+		SetARM9RegionTimings( 0x00000, 0x100000, 0, 32, 1, 1 );
 
-		SetARM9RegionTimings( 0xFFFF0, 0x100000, 32, 1, 1, false ); // BIOS
-		SetARM9RegionTimings( 0x02000, 0x03000, 16, 8, 1, true );   // main RAM
-		SetARM9RegionTimings( 0x03000, 0x04000, 32, 1, 1, false );  // ARM9/shared WRAM
-		SetARM9RegionTimings( 0x04000, 0x05000, 32, 1, 1, false );  // IO
-		SetARM9RegionTimings( 0x05000, 0x06000, 16, 1, 1, false );  // palette
-		SetARM9RegionTimings( 0x06000, 0x07000, 16, 1, 1, false );  // VRAM
-		SetARM9RegionTimings( 0x07000, 0x08000, 32, 1, 1, false );  // OAM
+		SetARM9RegionTimings( 0xFFFF0, 0x100000, Mem9.BIOS, 32, 1, 1 );
+		SetARM9RegionTimings( 0x02000, 0x03000, Mem9.MainRAM, 16, 8, 1 );
+		SetARM9RegionTimings( 0x03000, 0x04000, Mem9.WRAM, 32, 1, 1 );
+		SetARM9RegionTimings( 0x04000, 0x05000, Mem9.IO, 32, 1, 1 );
+		SetARM9RegionTimings( 0x05000, 0x06000, Mem9.Pal, 16, 1, 1 );
+		SetARM9RegionTimings( 0x06000, 0x07000, Mem9.VRAM, 16, 1, 1 );
+		SetARM9RegionTimings( 0x07000, 0x08000, Mem9.OAM, 32, 1, 1 );
 
-		SetARM7RegionTimings( 0x00000, 0x100000, 32, 1, 1 ); // void
+		SetARM7RegionTimings( 0x00000, 0x100000, 0, 32, 1, 1 );
 
-		SetARM7RegionTimings( 0x00000, 0x00010, 32, 1, 1 ); // BIOS
-		SetARM7RegionTimings( 0x02000, 0x03000, 16, 8, 1 ); // main RAM
-		SetARM7RegionTimings( 0x03000, 0x04000, 32, 1, 1 ); // ARM7/shared WRAM
-		SetARM7RegionTimings( 0x04000, 0x04800, 32, 1, 1 ); // IO
-		SetARM7RegionTimings( 0x06000, 0x07000, 16, 1, 1 ); // ARM7 VRAM
+		SetARM7RegionTimings( 0x00000, 0x00010, Mem7.BIOS, 32, 1, 1 );
+		SetARM7RegionTimings( 0x02000, 0x03000, Mem7.MainRAM, 16, 8, 1 );
+		SetARM7RegionTimings( 0x03000, 0x04000, Mem7.WRAM, 32, 1, 1 );
+		SetARM7RegionTimings( 0x04000, 0x04800, Mem7.IO, 32, 1, 1 );
+		SetARM7RegionTimings( 0x06000, 0x07000, Mem7.VRAM, 16, 1, 1 );
 	}
 
 	public bool HaltInterrupted( uint cpu )
@@ -145,4 +154,32 @@ public static class IRQ
 	public const int GXFIFO = 21;
 	public const int SPI = 23;
 	public const int Wifi = 24;
+}
+
+public static class Mem9
+{
+	public const uint ITCM = 0x00000001;
+	public const uint DTCM = 0x00000002;
+	public const uint BIOS = 0x00000004;
+	public const uint MainRAM = 0x00000008;
+	public const uint WRAM = 0x00000010;
+	public const uint IO = 0x00000020;
+	public const uint Pal = 0x00000040;
+	public const uint OAM = 0x00000080;
+	public const uint VRAM = 0x00000100;
+	public const uint GBAROM = 0x00020000;
+	public const uint GBARAM = 0x00040000;
+}
+
+public static class Mem7
+{
+	public const uint BIOS = 0x00000001;
+	public const uint MainRAM = 0x00000002;
+	public const uint WRAM = 0x00000004;
+	public const uint IO = 0x00000008;
+	public const uint Wifi0 = 0x00000010;
+	public const uint Wifi1 = 0x00000020;
+	public const uint VRAM = 0x00000040;
+	public const uint GBAROM = 0x00000100;
+	public const uint GBARAM = 0x00000200;
 }

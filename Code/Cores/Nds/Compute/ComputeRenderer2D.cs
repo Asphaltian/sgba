@@ -135,8 +135,8 @@ public sealed partial class ComputeRenderer2D
 	private Texture _output3D;
 	public void SetOutput3D( Texture tex ) => _output3D = tex;
 
-	private Texture _renderTarget;
-	public void SetOutputTarget( Texture tex ) => _renderTarget = tex;
+	private ComputeRenderer2D _swapPeer;
+	public void SetSwapPeer( ComputeRenderer2D p ) => _swapPeer = p;
 
 	private ComputeRenderer3D _render3D;
 	public void SetRenderer3D( ComputeRenderer3D r ) => _render3D = r;

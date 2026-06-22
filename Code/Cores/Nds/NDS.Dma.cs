@@ -81,7 +81,18 @@ public sealed partial class NDS
 		if ( (CPUStop & CPUStop_GXStall) != 0 ) return;
 
 		CPUStop |= CPUStop_GXStall;
-		ARM9.Halt( 2 );
+
+		if ( CurCPU == 1 )
+		{
+			ARM9.Halt( 2 );
+		}
+		else
+		{
+			DMAs[0].StallIfRunning();
+			DMAs[1].StallIfRunning();
+			DMAs[2].StallIfRunning();
+			DMAs[3].StallIfRunning();
+		}
 	}
 
 	public void GXFIFOUnstall()

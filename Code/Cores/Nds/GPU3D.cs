@@ -376,7 +376,7 @@ public sealed partial class GPU3D
 		}
 	}
 
-	private void CheckFIFOIRQ()
+	public void CheckFIFOIRQ()
 	{
 		bool irq = false;
 		switch ( GXStat >> 30 )
@@ -389,7 +389,7 @@ public sealed partial class GPU3D
 		else NDS.ClearIRQ( 0, IRQ.GXFIFO );
 	}
 
-	private void CheckFIFODMA()
+	public void CheckFIFODMA()
 	{
 		if ( CmdFIFO.Level() < 128 )
 			NDS.CheckDMAs( 0, 0x07 );

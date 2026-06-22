@@ -184,7 +184,7 @@ public sealed partial class ComputeRenderer2D
 		int oh = ScreenH * _scale;
 		sCompositorConfig comp = _snapComp[_slot];
 
-		Texture target = _renderTarget ?? _output;
+		Texture target = (_snapScreenSwap[_slot] && _swapPeer != null) ? _swapPeer.OutputTexture : _output;
 		Texture bg0 = (comp.Enable3D != 0 && _output3D != null) ? _output3D : _bgLayer[0];
 
 		cmd.Attributes.Set( "CaptureSrcA", _captureSrcA );

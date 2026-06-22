@@ -356,7 +356,7 @@ public sealed partial class NDS
 			case 0x04000064: GPU.CaptureCnt = val & 0xEF3F1F1F; return;
 			case 0x04000208: IME[0] = val & 0x1; UpdateIRQ( 0 ); return;
 			case 0x04000210: IE[0] = val; UpdateIRQ( 0 ); return;
-			case 0x04000214: IF[0] &= ~val; UpdateIRQ( 0 ); return;
+			case 0x04000214: IF[0] &= ~val; GPU3D.CheckFIFOIRQ(); UpdateIRQ( 0 ); return;
 			case 0x040001A0:
 				WriteAuxSpiCnt( 0, (ushort)val, 0xFFFF );
 				return;

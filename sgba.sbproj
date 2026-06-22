@@ -33,7 +33,10 @@
       "ReplacementDirectives": {
         ".Server.cs": "SERVER"
       },
-      "IgnoreFolders": [],
+      "IgnoreFolders": [
+        "editor",
+        "unittest"
+      ],
       "DistinctAssemblyReferences": []
     }
   }

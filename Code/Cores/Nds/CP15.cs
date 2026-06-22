@@ -101,22 +101,117 @@ public sealed partial class ARMv5
 
 	public void UpdatePURegion( uint n )
 	{
+		if ( (CP15Control & (1 << 0)) == 0 )
+			return;
+
+		uint coderw = (PU_CodeRW >> (int)(4 * n)) & 0xF;
+		uint datarw = (PU_DataRW >> (int)(4 * n)) & 0xF;
+
+		uint codecache, datacache, datawrite;
+
+		if ( (CP15Control & (1 << 12)) != 0 )
+			codecache = (PU_CodeCacheable >> (int)n) & 0x1;
+		else
+			codecache = 0;
+
+		if ( (CP15Control & (1 << 2)) != 0 )
+		{
+			datacache = (PU_DataCacheable >> (int)n) & 0x1;
+			datawrite = (PU_DataCacheWrite >> (int)n) & 0x1;
+		}
+		else
+		{
+			datacache = 0;
+			datawrite = 0;
+		}
+
+		uint rgn = PU_Region[n];
+		if ( (rgn & (1 << 0)) == 0 )
+			return;
+
+		int size = Math.Max( (int)((rgn >> 1) & 0x1F) - 11, 0 );
+		uint start = ((rgn >> 12) >> size) << size;
+		uint end = start + (1u << size);
+
+		byte usermask = 0;
+		byte privmask = 0;
+
+		switch ( datarw )
+		{
+			case 0: break;
+			case 1: privmask |= 0x03; break;
+			case 2: privmask |= 0x03; usermask |= 0x01; break;
+			case 3: privmask |= 0x03; usermask |= 0x03; break;
+			case 5: privmask |= 0x01; break;
+			case 6: privmask |= 0x01; usermask |= 0x01; break;
+		}
+
+		switch ( coderw )
+		{
+			case 0: break;
+			case 1: privmask |= 0x04; break;
+			case 2: privmask |= 0x04; usermask |= 0x04; break;
+			case 3: privmask |= 0x04; usermask |= 0x04; break;
+			case 5: privmask |= 0x04; break;
+			case 6: privmask |= 0x04; usermask |= 0x04; break;
+		}
+
+		if ( (datacache & 0x1) != 0 )
+		{
+			privmask |= 0x10;
+			usermask |= 0x10;
+
+			if ( (datawrite & 0x1) != 0 )
+			{
+				privmask |= 0x20;
+				usermask |= 0x20;
+			}
+		}
+
+		if ( (codecache & 0x1) != 0 )
+		{
+			privmask |= 0x40;
+			usermask |= 0x40;
+		}
+
+		for ( uint i = start; i < end; i++ )
+		{
+			PU_UserMap[i] = usermask;
+			PU_PrivMap[i] = privmask;
+		}
+
+		UpdateRegionTimings( start, end );
 	}
 
 	public void UpdatePURegions( bool updateAll )
 	{
-		for ( int i = 0; i < PU_PrivMap.Length; i++ )
+		if ( (CP15Control & (1 << 0)) == 0 )
 		{
-			byte v = 0x0F;
-			if ( (i & 0xFF000) == 0x02000 ) v |= 0x50;
-			PU_PrivMap[i] = v;
-			PU_UserMap[i] = v;
+			byte mask = 0x07;
+			if ( (CP15Control & (1 << 2)) != 0 ) mask |= 0x30;
+			if ( (CP15Control & (1 << 12)) != 0 ) mask |= 0x40;
+
+			Array.Fill( PU_UserMap, mask );
+			Array.Fill( PU_PrivMap, mask );
+
+			UpdateRegionTimings( 0x00000, 0x100000 );
+		}
+		else
+		{
+			if ( updateAll )
+			{
+				Array.Clear( PU_UserMap );
+				Array.Clear( PU_PrivMap );
+			}
+
+			for ( uint n = 0; n < 8; n++ )
+				UpdatePURegion( n );
+
+			if ( updateAll )
+				UpdateRegionTimings( 0x00000, 0x100000 );
 		}
 
 		PU_Map = (CPSR & 0x1F) == 0x10 ? PU_UserMap : PU_PrivMap;
-
-		if ( updateAll )
-			UpdateRegionTimings( 0, 0x100000 );
 	}
 
 	public void ICacheInvalidateAll() { }

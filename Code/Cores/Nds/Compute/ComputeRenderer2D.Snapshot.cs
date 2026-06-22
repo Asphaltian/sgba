@@ -18,6 +18,7 @@ public sealed partial class ComputeRenderer2D
 	private int[] _snapMasterBright;
 	private int[] _snapUnitEnabled;
 	private int[] _snapForcedBlank;
+	private bool[] _snapScreenSwap;
 	private int[] _snapBrightMode;
 	private int[] _snapBrightFactor;
 	private int[] _snapScreenOff;
@@ -50,6 +51,7 @@ public sealed partial class ComputeRenderer2D
 		_snapMasterBright = new int[FrameSlots];
 		_snapUnitEnabled = new int[FrameSlots];
 		_snapForcedBlank = new int[FrameSlots];
+		_snapScreenSwap = new bool[FrameSlots];
 		_snapBrightMode = new int[FrameSlots];
 		_snapBrightFactor = new int[FrameSlots];
 		_snapScreenOff = new int[FrameSlots];
@@ -125,6 +127,7 @@ public sealed partial class ComputeRenderer2D
 		_snapMasterBright[s] = _masterBright;
 		_snapUnitEnabled[s] = _unitEnabled;
 		_snapForcedBlank[s] = _forcedBlank;
+		_snapScreenSwap[s] = _gpu.ScreenSwap;
 
 		int dispMode = (int)((_gpu2d.DispCnt >> 16) & 0x3);
 		int screenOff;
