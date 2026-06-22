@@ -377,7 +377,7 @@ public sealed class SPUChannel
 
 		while ( (Timer >> 16) != 0 )
 		{
-			Timer = (uint)(TimerReload + (Timer - 0x10000));
+			Timer = TimerReload + (Timer - 0x10000);
 
 			if ( (type < 3) && (InterpType != AudioInterpolation.None) )
 			{
@@ -585,7 +585,7 @@ public sealed class SPUCaptureUnit
 		{
 			while ( (Timer >> 16) != 0 )
 			{
-				Timer = (uint)(TimerReload + (Timer - 0x10000));
+				Timer = TimerReload + (Timer - 0x10000);
 
 				FIFO_WriteS8( (sbyte)(sample >> 8) );
 				Pos++;
@@ -608,7 +608,7 @@ public sealed class SPUCaptureUnit
 		{
 			while ( (Timer >> 16) != 0 )
 			{
-				Timer = (uint)(TimerReload + (Timer - 0x10000));
+				Timer = TimerReload + (Timer - 0x10000);
 
 				FIFO_WriteS16( (short)sample );
 				Pos += 2;

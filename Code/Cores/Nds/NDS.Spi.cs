@@ -250,7 +250,7 @@ public sealed partial class NDS
 			0 => _pmData,
 			1 => _fwData,
 			2 => _tscData,
-			_ => (byte)0,
+			_ => 0,
 		};
 	}
 

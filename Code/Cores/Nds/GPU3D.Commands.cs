@@ -309,9 +309,9 @@ public sealed partial class GPU3D
 				case 0x60:
 					VertexPipelineCmdDelayed8();
 					Viewport[0] = entry.Param & 0xFF;
-					Viewport[1] = (uint)((191 - ((entry.Param >> 8) & 0xFF)) & 0xFF);
+					Viewport[1] = (191 - ((entry.Param >> 8) & 0xFF)) & 0xFF;
 					Viewport[2] = (entry.Param >> 16) & 0xFF;
-					Viewport[3] = (uint)((191 - (entry.Param >> 24)) & 0xFF);
+					Viewport[3] = (191 - (entry.Param >> 24)) & 0xFF;
 					Viewport[4] = (Viewport[2] - Viewport[0] + 1) & 0x1FF;
 					Viewport[5] = (Viewport[1] - Viewport[3] + 1) & 0xFF;
 					break;

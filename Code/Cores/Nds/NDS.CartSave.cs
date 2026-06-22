@@ -16,6 +16,10 @@ public sealed partial class NDS
 
 	private bool SRAMSelected;
 
+	private bool IsIRCart;
+	private byte IRCmd;
+	private uint IRPos;
+
 	private void ResetCartSave()
 	{
 		int savememtype = NdsSaveDatabase.SaveMemType( _rom );
@@ -36,11 +40,16 @@ public sealed partial class NDS
 		SRAMSaveLen = 0;
 
 		SRAMSelected = false;
+
+		IsIRCart = _rom != null && _rom.Length > 0x0C && _rom[0x0C] == (byte)'I';
+		IRCmd = 0;
+		IRPos = 0;
 	}
 
 	private void SaveSPISelect()
 	{
 		SRAMPos = 0;
+		IRPos = 0;
 	}
 
 	private void SaveSPIRelease()
@@ -56,6 +65,27 @@ public sealed partial class NDS
 	}
 
 	private byte SaveSPITransmitReceive( byte val )
+	{
+		if ( !IsIRCart )
+			return SaveFlashTransmitReceive( val );
+
+		if ( IRPos == 0 )
+		{
+			IRCmd = val;
+			IRPos++;
+			return 0;
+		}
+
+		IRPos++;
+		return IRCmd switch
+		{
+			0x00 => SaveFlashTransmitReceive( val ),
+			0x08 => 0xAA,
+			_ => 0,
+		};
+	}
+
+	private byte SaveFlashTransmitReceive( byte val )
 	{
 		if ( SRAMType == 0 ) return 0;
 
@@ -80,7 +110,7 @@ public sealed partial class NDS
 				1 => SRAMWrite_EEPROMTiny( val ),
 				2 => SRAMWrite_EEPROM( val ),
 				3 => SRAMWrite_FLASH( val ),
-				_ => (byte)0xFF,
+				_ => 0xFF,
 			};
 		}
 

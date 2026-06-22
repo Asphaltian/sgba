@@ -314,7 +314,7 @@ public sealed partial class GPU3D
 			normalZ >>= 4;
 		}
 
-		long dot = ((long)v1.Px * normalX) + ((long)v1.Py * normalY) + ((long)v1.Pw * normalZ);
+		long dot = (v1.Px * normalX) + (v1.Py * normalY) + (v1.Pw * normalZ);
 
 		bool facingview = dot <= 0;
 
