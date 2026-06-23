@@ -73,6 +73,7 @@ public sealed partial class NDS
 			case 0x04000130: return KeyInput;
 			case 0x04000134: return RCnt;
 			case 0x04000208: return (ushort)IME[0];
+			case 0x04000300: return PostFlag9;
 			case 0x04000304: return (ushort)PowerControl9;
 		}
 		if ( IsGpu2DA( addr ) ) return GPU.GPU2D_A.Read16( addr );
@@ -130,6 +131,7 @@ public sealed partial class NDS
 			case 0x040002B4: return SqrtRes;
 			case 0x040002B8: return SqrtVal[0];
 			case 0x040002BC: return SqrtVal[1];
+			case 0x04000300: return PostFlag9;
 			case 0x04000304: return PowerControl9;
 			case 0x04100000:
 				if ( (IPCFIFOCnt9 & 0x8000) != 0 )
@@ -449,6 +451,7 @@ public sealed partial class NDS
 			case 0x040001C0: return SpiCnt;
 			case 0x040001C2: return ReadSpiData();
 			case 0x04000208: return (ushort)IME[1];
+			case 0x04000300: return PostFlag7;
 			case 0x04000304: return (ushort)PowerControl7;
 		}
 		return (ushort)(ARM7IORead32( addr & ~3u ) >> (int)((addr & 2) * 8));

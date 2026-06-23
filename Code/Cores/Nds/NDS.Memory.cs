@@ -138,6 +138,19 @@ public sealed partial class NDS
 		}
 	}
 
+	private uint GbaSlotRead( uint addr, int bytes, int cpu )
+	{
+		bool owner = cpu == 0 ? (ExMemCnt[0] & 0x80) == 0 : (ExMemCnt[0] & 0x80) != 0;
+		if ( !owner )
+			return 0;
+		if ( (addr & 0xFF000000) >= 0x0A000000 )
+			return bytes == 1 ? 0xFFu : bytes == 2 ? 0xFFFFu : 0xFFFFFFFFu;
+		uint lo = (addr >> 1) & 0xFFFF;
+		if ( bytes == 1 ) return (lo >> (int)((addr & 1) * 8)) & 0xFF;
+		if ( bytes == 2 ) return lo;
+		return lo | ((((addr + 2) >> 1) & 0xFFFF) << 16);
+	}
+
 	private static ushort Read16( byte[] mem, uint offset ) => (ushort)(mem[offset] | (mem[offset + 1] << 8));
 	private static uint Read32( byte[] mem, uint offset ) => (uint)(mem[offset] | (mem[offset + 1] << 8) | (mem[offset + 2] << 16) | (mem[offset + 3] << 24));
 	private static void Write16( byte[] mem, uint offset, ushort val ) { mem[offset] = (byte)val; mem[offset + 1] = (byte)(val >> 8); }
@@ -156,6 +169,9 @@ public sealed partial class NDS
 			case 0x05000000: return PaletteEnabled9( addr ) ? (byte)GPU.ReadPalette( addr, 1 ) : (byte)0;
 			case 0x06000000: return (byte)ReadVRAM9( addr, 1 );
 			case 0x07000000: return PaletteEnabled9( addr ) ? (byte)GPU.ReadOAM( addr, 1 ) : (byte)0;
+			case 0x08000000:
+			case 0x09000000:
+			case 0x0A000000: return (byte)GbaSlotRead( addr, 1, 0 );
 		}
 		return 0;
 	}
@@ -198,6 +214,9 @@ public sealed partial class NDS
 			case 0x05000000: return PaletteEnabled9( addr ) ? (ushort)GPU.ReadPalette( addr, 2 ) : (ushort)0;
 			case 0x06000000: return (ushort)ReadVRAM9( addr, 2 );
 			case 0x07000000: return PaletteEnabled9( addr ) ? (ushort)GPU.ReadOAM( addr, 2 ) : (ushort)0;
+			case 0x08000000:
+			case 0x09000000:
+			case 0x0A000000: return (ushort)GbaSlotRead( addr, 2, 0 );
 		}
 		return 0;
 	}
@@ -216,6 +235,9 @@ public sealed partial class NDS
 			case 0x05000000: return PaletteEnabled9( addr ) ? GPU.ReadPalette( addr, 4 ) : 0;
 			case 0x06000000: return ReadVRAM9( addr, 4 );
 			case 0x07000000: return PaletteEnabled9( addr ) ? GPU.ReadOAM( addr, 4 ) : 0;
+			case 0x08000000:
+			case 0x09000000:
+			case 0x0A000000: return GbaSlotRead( addr, 4, 0 );
 		}
 		return 0;
 	}
@@ -280,6 +302,12 @@ public sealed partial class NDS
 			case 0x04800000: return addr < 0x04810000 ? (byte)(Wifi.Read( addr & ~1u ) >> (int)((addr & 1) * 8)) : (byte)0;
 			case 0x06000000:
 			case 0x06800000: return (byte)GPU.ReadVRAM_ARM7( addr, 1 );
+			case 0x08000000:
+			case 0x08800000:
+			case 0x09000000:
+			case 0x09800000:
+			case 0x0A000000:
+			case 0x0A800000: return (byte)GbaSlotRead( addr, 1, 1 );
 		}
 		return 0;
 	}
@@ -304,6 +332,12 @@ public sealed partial class NDS
 			case 0x04800000: return addr < 0x04810000 ? Wifi.Read( addr ) : (ushort)0;
 			case 0x06000000:
 			case 0x06800000: return (ushort)GPU.ReadVRAM_ARM7( addr, 2 );
+			case 0x08000000:
+			case 0x08800000:
+			case 0x09000000:
+			case 0x09800000:
+			case 0x0A000000:
+			case 0x0A800000: return (ushort)GbaSlotRead( addr, 2, 1 );
 		}
 		return 0;
 	}
@@ -328,6 +362,12 @@ public sealed partial class NDS
 			case 0x04800000: return addr < 0x04810000 ? (uint)(Wifi.Read( addr ) | (Wifi.Read( addr + 2 ) << 16)) : 0u;
 			case 0x06000000:
 			case 0x06800000: return GPU.ReadVRAM_ARM7( addr, 4 );
+			case 0x08000000:
+			case 0x08800000:
+			case 0x09000000:
+			case 0x09800000:
+			case 0x0A000000:
+			case 0x0A800000: return GbaSlotRead( addr, 4, 1 );
 		}
 		return 0;
 	}
