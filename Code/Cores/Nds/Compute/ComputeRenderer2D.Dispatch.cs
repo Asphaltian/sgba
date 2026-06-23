@@ -92,7 +92,7 @@ public sealed partial class ComputeRenderer2D
 
 		cmd.UavBarrier( _captureSrcA );
 
-		if ( _snapCapSrcBEn[s] != 0 )
+		if ( _snapCapSrcBEn[s] != 0 && _snapCapFeedback[s] == 0 )
 			_captureSrcB.SetData<uint>( _snapCapSrcB[s] );
 
 		cmd.Attributes.Set( "SrcA2D", _captureSrcA );
@@ -112,6 +112,9 @@ public sealed partial class ComputeRenderer2D
 		cmd.Attributes.Set( "uDstOffset", capsize == 0 ? 0 : dstoffset );
 		cmd.Attributes.Set( "uBufferHeight", bufferHeight );
 		cmd.Attributes.Set( "uScale", _scale );
+		cmd.Attributes.Set( "uFeedback", _snapCapFeedback[s] );
+		cmd.Attributes.Set( "uSrcBLayer", _snapCapSrcBLayer[s] );
+		cmd.Attributes.Set( "uSrcBYOff", _snapCapSrcBYOff[s] );
 		cmd.DispatchCompute( _csCapture, width * _scale, height * _scale, 1 );
 		cmd.UavBarrier( capsize == 0 ? CaptureOutput128Tex : CaptureOutput256Tex );
 	}

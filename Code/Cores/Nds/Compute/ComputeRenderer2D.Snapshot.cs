@@ -29,6 +29,7 @@ public sealed partial class ComputeRenderer2D
 	private bool[] _snapCapOn;
 	private int[] _snapCapBank, _snapCapOffset, _snapCapWidth, _snapCapHeight;
 	private int[] _snapCapMode, _snapCapEVA, _snapCapEVB, _snapCapSrcA3D, _snapCapSrcBEn, _snapCapSize;
+	private int[] _snapCapFeedback, _snapCapSrcBLayer, _snapCapSrcBYOff;
 	private uint[][] _snapCapSrcB;
 
 	private int _writeSlot, _readySlot = -1, _readSlot = -1;
@@ -70,6 +71,9 @@ public sealed partial class ComputeRenderer2D
 		_snapCapSrcA3D = new int[FrameSlots];
 		_snapCapSrcBEn = new int[FrameSlots];
 		_snapCapSize = new int[FrameSlots];
+		_snapCapFeedback = new int[FrameSlots];
+		_snapCapSrcBLayer = new int[FrameSlots];
+		_snapCapSrcBYOff = new int[FrameSlots];
 		_snapCapSrcB = new uint[FrameSlots][];
 
 		for ( int i = 0; i < FrameSlots; i++ )
@@ -201,8 +205,22 @@ public sealed partial class ComputeRenderer2D
 
 		bool srcBen = ((cap >> 25) & 0x1) == 0;
 		_snapCapSrcBEn[s] = srcBen ? 1 : 0;
+		_snapCapFeedback[s] = 0;
+		_snapCapSrcBLayer[s] = 0;
+		_snapCapSrcBYOff[s] = 0;
 		if ( srcBen )
-			BuildCaptureSrcB( s, cap, width, height );
+		{
+			uint srcvram = (_gpu2d.DispCnt >> 18) & 0x3;
+			int capblk = _gpu.GetCaptureBlock_LCDC( srcvram << 17 );
+			if ( capblk >= 0 )
+			{
+				_snapCapFeedback[s] = 1;
+				_snapCapSrcBLayer[s] = capblk >> 2;
+				_snapCapSrcBYOff[s] = ((_gpu2d.DispCnt >> 16) & 0x3) != 2 ? (int)((cap >> 26) & 0x3) * 64 : 0;
+			}
+			else
+				BuildCaptureSrcB( s, cap, width, height );
+		}
 	}
 
 	private void BuildCaptureSrcB( int s, uint cap, int width, int height )

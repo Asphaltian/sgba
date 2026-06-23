@@ -29,6 +29,9 @@ CS
 	int uDstOffset < Attribute( "uDstOffset" ); >;
 	int uBufferHeight < Attribute( "uBufferHeight" ); >;
 	int uScale < Attribute( "uScale" ); >;
+	int uFeedback < Attribute( "uFeedback" ); >;
+	int uSrcBLayer < Attribute( "uSrcBLayer" ); >;
+	int uSrcBYOff < Attribute( "uSrcBYOff" ); >;
 
 	[numthreads( 8, 8, 1 )]
 	void MainCs( uint3 id : SV_DispatchThreadID )
@@ -61,11 +64,29 @@ CS
 
 		int nx = sx / uScale;
 		int ny = sy / uScale;
-		uint vb = uSrcBEnable != 0 ? SrcB[ny * uDstWidth + nx] : 0u;
-		uint br = ( vb & 0x1Fu ) << 3;
-		uint bg = ( ( vb >> 5 ) & 0x1Fu ) << 3;
-		uint bb = ( ( vb >> 10 ) & 0x1Fu ) << 3;
-		uint ba = vb >> 15;
+
+		uint br, bg, bb, ba;
+		if ( uFeedback != 0 )
+		{
+			int sby = sy + uSrcBYOff * uScale;
+			int bh = uBufferHeight * uScale;
+			if ( sby >= bh ) sby -= bh;
+			float4 fc = ( uCapSize == 0 )
+				? CaptureOut128[int3( sx, sby, uSrcBLayer )]
+				: CaptureOut256[int3( sx, sby, uSrcBLayer )];
+			br = (uint)( fc.r * 255.0 + 0.5 );
+			bg = (uint)( fc.g * 255.0 + 0.5 );
+			bb = (uint)( fc.b * 255.0 + 0.5 );
+			ba = fc.a > 0.0 ? 1u : 0u;
+		}
+		else
+		{
+			uint vb = uSrcBEnable != 0 ? SrcB[ny * uDstWidth + nx] : 0u;
+			br = ( vb & 0x1Fu ) << 3;
+			bg = ( ( vb >> 5 ) & 0x1Fu ) << 3;
+			bb = ( ( vb >> 10 ) & 0x1Fu ) << 3;
+			ba = vb >> 15;
+		}
 
 		uint rr, rg, rb, ra;
 		if ( uMode == 0 )
@@ -92,8 +113,8 @@ CS
 		float4 outc = float4( (float)rr / 255.0, (float)rg / 255.0, (float)rb / 255.0, ra != 0u ? 1.0 : 0.0 );
 
 		int ly = ( uDstOffset * 64 * uScale ) + (int)id.y;
-		int bh = uBufferHeight * uScale;
-		if ( ly >= bh ) ly -= bh;
+		int bh2 = uBufferHeight * uScale;
+		if ( ly >= bh2 ) ly -= bh2;
 
 		if ( uCapSize == 0 )
 			CaptureOut128[int3( (int)id.x, ly, uDstLayer )] = outc;
