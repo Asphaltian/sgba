@@ -61,7 +61,7 @@ CS
 			if ( iswin && ( uWindowEnable == 0 ) )
 				continue;
 
-			if ( spr.Type >= 3 )
+			if ( spr.Type >= 5 )
 				continue;
 
 			int z = ( spr.BGPrio * 128 ) + i;
